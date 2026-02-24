@@ -4,9 +4,8 @@ CrystalMedia Downloader v3.1.9
 ==============================
 
 Spotify mode note:
-Spotdl shared mode is frequently rate-limited (86400s) after Spotify's 2025 update.
-Personal credentials or --musicbrainz workaround may help, but not implemented here.
-Update spotdl when fixed: pip install --upgrade spotdl
+Spotdl is no longer usable as of now due to spotify's February 2026 Dev Mode changes.
+refer: https://github.com/spotDL/spotify-downloader/issues/2617
 
 Author: Thegamerprogram
 License: MIT
@@ -253,3 +252,4 @@ def main_loop():
 if __name__ == "__main__":
 
     main_loop()
+
