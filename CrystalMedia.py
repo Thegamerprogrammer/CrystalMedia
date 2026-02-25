@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 CrystalMedia Downloader – Stable Production Release v3.1.9
 ==========================================================
-
 Cross-platform media downloader for YouTube & Spotify.
-
-YouTube: works like a beast  
+YouTube: works like a beast
 Spotify: currently non-functional (Feb 2026 dev mode killed shared creds)
-
 Refer: https://github.com/spotDL/spotify-downloader/issues/2617
-
 Author: Thegamerprogrammer
 License: MIT
 """
-
 # ──────────────────────────────────────────────
 # Built-in modules only — no external imports yet
 # ──────────────────────────────────────────────
@@ -46,7 +40,7 @@ def command_exists(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 def ask_install(what: str) -> bool:
-    print(f"\nCrystalMedia needs {what} to not be a broken tool.")
+    print(f"\nCrystalMedia needs {what} to not be a broken toy.")
     ans = input("Install now? [Y/n]: ").strip().lower()
     return ans in ('', 'y', 'yes')
 
@@ -136,11 +130,11 @@ console = Console()
 # Pastel blue theme constants — defined early
 # ──────────────────────────────────────────────
 COL_TITLE = "bold #A5D8FF"
-COL_ACC   = "bold #B3E0FF"
-COL_WARN  = "bold #FFE066"
-COL_ERR   = "bold #FF9999"
-COL_GOOD  = "bold #B2F2BB"
-COL_MENU  = "bold #D6E4FF"
+COL_ACC = "bold #B3E0FF"
+COL_WARN = "bold #FFE066"
+COL_ERR = "bold #FF9999"
+COL_GOOD = "bold #B2F2BB"
+COL_MENU = "bold #D6E4FF"
 
 # ──────────────────────────────────────────────
 # List imported libraries with style
@@ -153,7 +147,7 @@ libs = [
     ("spotdl", "Spotify downloader"),
 ]
 for name, desc in libs:
-    console.print(f"  • [bold green]{name}[/bold green] → {desc}")
+    console.print(f" • [bold green]{name}[/bold green] → {desc}")
 
 console.print("")
 
@@ -177,7 +171,6 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
                     padding=(1, 2),
                 )
             )
-
             # Cross-platform any-key detection
             if platform.system() == "Windows":
                 import msvcrt
@@ -189,10 +182,8 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
                 if select.select([sys.stdin], [], [], 0.1)[0]:
                     sys.stdin.read(1)
                     break
-
             time.sleep(1)
             remaining -= 1
-
     console.print(Text("Resuming...", style=COL_ACC))
     time.sleep(0.5)
 
@@ -206,13 +197,10 @@ def download_ffmpeg():
     ffmpeg_dir = Path("ffmpeg")
     bin_dir = ffmpeg_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
-
     if command_exists("ffmpeg"):
         console.print(Text("FFmpeg already found in PATH — skipping.", style=COL_GOOD))
         return
-
     console.print(Text("FFmpeg missing — downloading from gyan.dev...", style=COL_WARN))
-
     base_url = "https://www.gyan.dev/ffmpeg/builds/"
     if platform.system() == "Windows":
         url = base_url + "ffmpeg-release-essentials.zip"
@@ -220,13 +208,10 @@ def download_ffmpeg():
     else:
         url = base_url + "ffmpeg-release-amd64-static.tar.xz"
         archive = "ffmpeg.tar.xz"
-
     archive_path = Path(archive)
-
     try:
         console.print(f"[cyan]Downloading {url.split('/')[-1]}...[/cyan]")
         urllib.request.urlretrieve(url, archive_path)
-
         console.print("[cyan]Extracting binaries...[/cyan]")
         if platform.system() == "Windows":
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
@@ -244,13 +229,10 @@ def download_ffmpeg():
                         extracted = bin_dir / member.name
                         if extracted.parent != bin_dir:
                             shutil.move(extracted, bin_dir / extracted.name.split('/')[-1])
-
         archive_path.unlink(missing_ok=True)
         console.print(Text("FFmpeg binaries downloaded to ./ffmpeg/bin", style=COL_GOOD))
-
         os.environ["PATH"] += os.pathsep + str(bin_dir.absolute())
         console.print(f"[dim]Added {bin_dir} to session PATH[/dim]")
-
     except Exception as e:
         console.print(Text(f"FFmpeg download failed: {str(e)}", style=COL_ERR))
         console.print(Text("Manually grab it from https://www.gyan.dev/ffmpeg/builds/", style=COL_WARN))
@@ -312,6 +294,20 @@ def create_folders():
 create_folders()
 
 # ──────────────────────────────────────────────
+# Custom logger to make yt-dlp output yellow
+# ──────────────────────────────────────────────
+class YellowLogger:
+    def debug(self, msg):
+        if msg.startswith('[youtube]') or msg.startswith('[download]') or msg.startswith('[info]') or msg.startswith('[Merger]'):
+            console.print(f"[yellow]{msg}[/yellow]")
+    def info(self, msg):
+        console.print(f"[yellow]{msg}[/yellow]")
+    def warning(self, msg):
+        console.print(f"[yellow]{msg}[/yellow]")
+    def error(self, msg):
+        console.print(f"[red]{msg}[/red]")
+
+# ──────────────────────────────────────────────
 # YouTube download logic (native API + title display + yellow logs)
 # ──────────────────────────────────────────────
 USER_AGENTS = [
@@ -327,7 +323,6 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         if is_playlist else
         f"downloads/{'YT VIDEO' if content_type == 'video' else 'YT MUSIC'}/{subfolder}/%(title)s.%(ext)s"
     )
-
     options = {
         "outtmpl": base_path,
         "quiet": False,
@@ -341,12 +336,10 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         "remux_video": "mp4",
         "format_sort": ["ext:mp4:m4a"],
     }
-
     if is_playlist:
         options.update({"sleep_requests": 2, "sleep_interval": 5, "max_sleep_interval": 15})
     else:
         options.update({"sleep_requests": 1, "sleep_interval": 3, "max_sleep_interval": 10})
-
     if content_type == "video":
         options["format"] = select_mp4_quality()
         options["postprocessors"] = [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}]
@@ -354,25 +347,24 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         options["format"] = "bestaudio/best"
         bitrate = select_mp3_bitrate()
         options["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": bitrate}]
-
     return options
 
 def select_mp3_bitrate() -> str:
     console.print(Text("MP3 Bitrate Selection", style=COL_TITLE))
-    console.print(Text("  1. Low (96 kbps)", style=COL_MENU))
-    console.print(Text("  2. Medium (128 kbps)", style=COL_MENU))
-    console.print(Text("  3. Standard (192 kbps) [default]", style=COL_MENU))
-    console.print(Text("  4. High (256 kbps)", style=COL_MENU))
-    console.print(Text("  5. Insane (320 kbps)", style=COL_MENU))
+    console.print(Text(" 1. Low (96 kbps)", style=COL_MENU))
+    console.print(Text(" 2. Medium (128 kbps)", style=COL_MENU))
+    console.print(Text(" 3. Standard (192 kbps) [default]", style=COL_MENU))
+    console.print(Text(" 4. High (256 kbps)", style=COL_MENU))
+    console.print(Text(" 5. Insane (320 kbps)", style=COL_MENU))
     choice = console.input(Text("→ ", style=COL_ACC)).strip() or "3"
     return {"1": "96", "2": "128", "3": "192", "4": "256", "5": "320"}.get(choice, "192")
 
 def select_mp4_quality() -> str:
     console.print(Text("MP4 Quality Selection", style=COL_TITLE))
-    console.print(Text("  1. Low (~360p)", style=COL_MENU))
-    console.print(Text("  2. Medium (~480p–720p)", style=COL_MENU))
-    console.print(Text("  3. High (~720p–1080p)", style=COL_MENU))
-    console.print(Text("  4. Best (highest available) [default]", style=COL_MENU))
+    console.print(Text(" 1. Low (~360p)", style=COL_MENU))
+    console.print(Text(" 2. Medium (~480p–720p)", style=COL_MENU))
+    console.print(Text(" 3. High (~720p–1080p)", style=COL_MENU))
+    console.print(Text(" 4. Best (highest available) [default]", style=COL_MENU))
     choice = console.input(Text("→ ", style=COL_ACC)).strip() or "4"
     if choice == "1": return "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
     if choice == "2": return "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
@@ -386,9 +378,9 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             title = info.get('title', 'Unknown')
             if is_playlist:
                 title = info.get('playlist_title', title) or title
-        console.print(Text(f"Downloading: [bold yellow]{title}[/bold yellow]", style=COL_ACC))
+        console.print(Text("Downloading: ", style=COL_ACC), end="")
+        console.print(Text(title, style="bold yellow"))
     except:
-        title = "Unknown title"
         console.print(Text("Could not extract title — downloading anyway...", style=COL_WARN))
 
     subfolder = "Playlist" if is_playlist else "Single"
@@ -399,6 +391,20 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     console.print(Text(f"Initiating {mode} {content_type.upper()} download → {target_dir}", style=COL_ACC))
 
     options = get_ydl_options(is_playlist, content_type)
+
+    # ── Yellow logger for yt-dlp ──
+    class YellowLogger:
+        def debug(self, msg):
+            if msg.startswith('[youtube]') or msg.startswith('[download]') or msg.startswith('[info]') or msg.startswith('[Merger]'):
+                console.print(f"[yellow]{msg}[/yellow]")
+        def info(self, msg):
+            console.print(f"[yellow]{msg}[/yellow]")
+        def warning(self, msg):
+            console.print(f"[yellow]{msg}[/yellow]")
+        def error(self, msg):
+            console.print(f"[red]{msg}[/red]")
+
+    options["logger"] = YellowLogger()
 
     class ColorisedProgress:
         def __init__(self):
@@ -428,20 +434,6 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     progress = ColorisedProgress()
     options["progress_hooks"] = [progress.progress_hook]
 
-    # Custom logger to color yt-dlp output yellow
-    class YellowLogger:
-        def debug(self, msg):
-            if msg.startswith('[youtube]') or msg.startswith('[download]') or msg.startswith('[info]') or msg.startswith('[Merger]'):
-                console.print(f"[yellow]{msg}[/yellow]")
-        def info(self, msg):
-            console.print(f"[yellow]{msg}[/yellow]")
-        def warning(self, msg):
-            console.print(f"[yellow]{msg}[/yellow]")
-        def error(self, msg):
-            console.print(f"[red]{msg}[/red]")
-
-    options["logger"] = YellowLogger()
-
     retry_count = 0
     max_retries = 30
     while retry_count < max_retries:
@@ -468,14 +460,14 @@ def download_spotify(url: str, is_playlist: bool) -> None:
     target_dir = Path("downloads/SPOTIFY") / subfolder
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Try to get title from spotdl
     try:
         spotdl_client = Spotdl()
         songs = spotdl_client.search([url])
         title = songs[0].name if songs else "Unknown track"
         if is_playlist:
             title = "Playlist"
-        console.print(Text(f"Downloading: [bold yellow]{title}[/bold yellow]", style=COL_ACC))
+        console.print(Text("Downloading: ", style=COL_ACC), end="")
+        console.print(Text(title, style="bold yellow"))
     except:
         console.print(Text("Could not extract title — downloading anyway...", style=COL_WARN))
 
@@ -493,6 +485,7 @@ def download_spotify(url: str, is_playlist: bool) -> None:
         title="Spotify Status",
         border_style="red"
     ))
+
     pause_for_reading("Spotify warning — review above", 15)
 
     try:
@@ -550,7 +543,18 @@ def main_loop():
     categories = ["YouTube Video (MP4)", "YouTube Music (MP3)", "Spotify (Broken)", "Exit"]
     selected_index = 0
 
-    # Initial splash with Spotify warning
+    # FIX: Clear any leftover keypresses from the library countdown
+    # so they don't accidentally skip the Spotify warning pause
+    if platform.system() == "Windows":
+        import msvcrt
+        while msvcrt.kbhit():
+            msvcrt.getch()  # drain any pending keys
+    else:
+        import select
+        while select.select([sys.stdin], [], [], 0)[0]:
+            sys.stdin.read(1)
+
+    # Now safe to show the splash (Spotify warning won't be skipped)
     display_full_splash()
 
     while True:
@@ -558,7 +562,7 @@ def main_loop():
 
         console.print(Text("Main Category Selection", style=COL_TITLE))
         for i, category in enumerate(categories):
-            prefix = "→ " if i == selected_index else "  "
+            prefix = "→ " if i == selected_index else " "
             style = COL_ACC if i == selected_index else "white"
             console.print(Text(prefix + category, style=style))
         console.print(Text("\n↑ ↓ to navigate • Enter to select • Ctrl+C to quit", style=COL_ACC))
@@ -578,8 +582,8 @@ def main_loop():
 
                 display_clean_splash()
                 console.print(Text("Mode Selection", style=COL_TITLE))
-                console.print(Text("  1. Single Item", style=COL_MENU))
-                console.print(Text("  2. Playlist", style=COL_MENU))
+                console.print(Text(" 1. Single Item", style=COL_MENU))
+                console.print(Text(" 2. Playlist", style=COL_MENU))
                 mode_input = console.input(Text("→ ", style=COL_ACC)).strip()
                 is_playlist = mode_input == "2"
 
@@ -626,5 +630,3 @@ def main_loop():
 
 if __name__ == "__main__":
     main_loop()
-
-
