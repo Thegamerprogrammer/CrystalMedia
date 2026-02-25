@@ -483,7 +483,7 @@ def download_spotify(url: str, is_playlist: bool) -> None:
 
     console.print(Panel(
         Text(
-            "Spotify mode is non-functional due to February 2025 Developer Mode update.\n"
+            "Spotify mode is non-functional due to February 2026 Developer Mode update.\n"
             "Shared credentials are rate-limited or rejected (403 / 86400s errors).\n"
             "Refer: https://github.com/spotDL/spotify-downloader/issues/2617\n"
             "Upgrade spotdl when resolved: pip install --upgrade spotdl",
@@ -596,7 +596,7 @@ def main_loop():
                     display_clean_splash()
                     console.print(Panel(
                         Text(
-                            "Spotify mode is non-functional due to February 2025 Developer Mode update.\n"
+                            "Spotify mode is non-functional due to February 2026 Developer Mode update.\n"
                             "Shared credentials are rate-limited or rejected (403 / 86400s errors).\n"
                             "Refer: https://github.com/spotDL/spotify-downloader/issues/2617\n"
                             "Upgrade spotdl when resolved: pip install --upgrade spotdl",
@@ -626,4 +626,5 @@ def main_loop():
 
 if __name__ == "__main__":
     main_loop()
+
 
