@@ -270,7 +270,7 @@ def display_full_splash():
     figlet = Figlet(font='slant')
     art = figlet.renderText('CrystalMedia')
     console.print(Text(art, style=COL_TITLE))
-    console.print(Text("v3.1.9 – Stable Production Release • 2026", style=COL_ACC))
+    console.print(Text("v3.1.9", style=COL_ACC))
     console.print("-" * 60)
     console.print(Panel(
         Text(
@@ -626,3 +626,4 @@ def main_loop():
 
 if __name__ == "__main__":
     main_loop()
+
