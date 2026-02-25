@@ -137,7 +137,7 @@ On first launch, the application will:
 ## 🧭 Usage
 
 ``` bash
-python crystalmedia.py
+python CrystalMedia.py
 ```
 
 Main Menu:
