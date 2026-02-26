@@ -118,6 +118,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.live import Live
+from rich.layout import Layout
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from pyfiglet import Figlet
 import yt_dlp
@@ -141,7 +142,7 @@ COL_MENU = "bold #D6E4FF"
 # ──────────────────────────────────────────────
 console.print("\n[bold cyan]Libraries loaded after healing:[/bold cyan]")
 libs = [
-    ("rich", "console, panel, text, live, progress"),
+    ("rich", "console, panel, text, live, layout, progress"),
     ("pyfiglet", "ascii art"),
     ("yt_dlp", "YouTube downloader"),
     ("spotdl", "Spotify downloader"),
@@ -294,21 +295,78 @@ def create_folders():
 create_folders()
 
 # ──────────────────────────────────────────────
-# Custom logger to make yt-dlp output yellow
+# Fixed Progress Logger with Layout
 # ──────────────────────────────────────────────
-class YellowLogger:
-    def debug(self, msg):
-        if msg.startswith('[youtube]') or msg.startswith('[download]') or msg.startswith('[info]') or msg.startswith('[Merger]'):
-            console.print(f"[yellow]{msg}[/yellow]")
-    def info(self, msg):
-        console.print(f"[yellow]{msg}[/yellow]")
-    def warning(self, msg):
-        console.print(f"[yellow]{msg}[/yellow]")
-    def error(self, msg):
-        console.print(f"[red]{msg}[/red]")
+class FixedProgressLogger:
+    """Fixed progress bar + scrolling log panel using Rich Layout"""
+    def __init__(self, console_obj):
+        self.console = console_obj
+        self.logs = []
+        self.layout = Layout()
+        self.layout.split_column(
+            Layout(name="progress", size=8),
+            Layout(name="logs", minimum_size=10)
+        )
+        self.progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            console=self.console
+        )
+        self.task = None
+        self.live = Live(self.layout, console=self.console, refresh_per_second=4)
+        
+    def add_log(self, msg: str, level: str = "info"):
+        """Add message to log panel with color coding"""
+        if level == "error":
+            styled_msg = f"[red]{msg}[/red]"
+        elif level == "warning":
+            styled_msg = f"[yellow]{msg}[/yellow]"
+        elif level == "success":
+            styled_msg = f"[green]{msg}[/green]"
+        else:
+            styled_msg = f"[cyan]{msg}[/cyan]"
+        
+        self.logs.append(Text(styled_msg))
+        # Keep last 15 logs visible
+        if len(self.logs) > 15:
+            self.logs = self.logs[-15:]
+        
+        # Update log panel
+        log_text = Text()
+        for log_entry in self.logs:
+            log_text.append(log_entry)
+            log_text.append("\n")
+        
+        log_panel = Panel(
+            log_text if self.logs else Text("Waiting for output...", style="dim"),
+            title="Download Log",
+            border_style="blue"
+        )
+        self.layout["logs"].update(log_panel)
+    
+    def update_progress(self, percent: float, description: str = "Downloading"):
+        """Update progress bar"""
+        if not self.task:
+            self.task = self.progress.add_task(description, total=100)
+        self.progress.update(self.task, completed=percent, description=description)
+        
+        # Update layout with progress
+        self.layout["progress"].update(
+            Panel(self.progress, title="Progress", border_style="green")
+        )
+    
+    def start(self):
+        """Start the live display"""
+        self.live.start()
+    
+    def stop(self):
+        """Stop the live display"""
+        self.live.stop()
 
 # ──────────────────────────────────────────────
-# YouTube download logic (native API + title display + yellow logs)
+# YouTube download logic (native API + title display + improved logger)
 # ──────────────────────────────────────────────
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -392,47 +450,40 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
 
     options = get_ydl_options(is_playlist, content_type)
 
-    # ── Yellow logger for yt-dlp ──
-    class YellowLogger:
+    # Initialize fixed progress logger
+    progress_logger = FixedProgressLogger(console)
+    progress_logger.start()
+    progress_logger.add_log(f"Starting {mode} {content_type.upper()} download", "info")
+
+    class FixedYellowLogger:
+        def __init__(self, logger):
+            self.logger = logger
         def debug(self, msg):
-            if msg.startswith('[youtube]') or msg.startswith('[download]') or msg.startswith('[info]') or msg.startswith('[Merger]'):
-                console.print(f"[yellow]{msg}[/yellow]")
+            if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
+                self.logger.add_log(strip_ansi(msg), "info")
         def info(self, msg):
-            console.print(f"[yellow]{msg}[/yellow]")
+            self.logger.add_log(strip_ansi(msg), "info")
         def warning(self, msg):
-            console.print(f"[yellow]{msg}[/yellow]")
+            self.logger.add_log(strip_ansi(msg), "warning")
         def error(self, msg):
-            console.print(f"[red]{msg}[/red]")
+            self.logger.add_log(strip_ansi(msg), "error")
 
-    options["logger"] = YellowLogger()
+    options["logger"] = FixedYellowLogger(progress_logger)
 
-    class ColorisedProgress:
-        def __init__(self):
-            self.progress = Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                console=console
-            )
-            self.task = None
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            raw_percent = d.get('_percent_str', '0%')
+            clean_percent = strip_ansi(raw_percent).strip('%')
+            try:
+                percent = float(clean_percent)
+                progress_logger.update_progress(percent, "Downloading")
+            except ValueError:
+                pass
+        elif d['status'] == 'finished':
+            progress_logger.add_log("Download complete. Processing...", "success")
+            progress_logger.update_progress(100, "Processing")
 
-        def progress_hook(self, d):
-            if d['status'] == 'downloading':
-                if not self.task:
-                    self.task = self.progress.add_task("[cyan]Downloading...", total=100)
-                raw_percent = d.get('_percent_str', '0%')
-                clean_percent = strip_ansi(raw_percent).strip('%')
-                try:
-                    percent = float(clean_percent)
-                    self.progress.update(self.task, completed=percent)
-                except ValueError:
-                    pass
-            elif d['status'] == 'finished':
-                console.print(Text("Download complete. Processing...", style=COL_GOOD))
-
-    progress = ColorisedProgress()
-    options["progress_hooks"] = [progress.progress_hook]
+    options["progress_hooks"] = [progress_hook]
 
     retry_count = 0
     max_retries = 30
@@ -440,18 +491,22 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         try:
             with YoutubeDL(options) as downloader:
                 downloader.extract_info(url, download=True)
+            progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
+            progress_logger.stop()
             console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
             pause_for_reading("Download success — review above", 15)
             return
         except Exception as e:
             retry_count += 1
+            progress_logger.add_log(f"Attempt {retry_count}/{max_retries} failed: {str(e)[:80]}", "warning")
             console.print(Text(f"Attempt {retry_count}/{max_retries} failed: {str(e)}", style=COL_WARN))
-            pause_for_reading("Error — copy the message above", 15)
-            if any(keyword in str(e).lower() for keyword in ["rate limit", "throttl", "429", "443", "connect"]):
+            if any(keyword in str(e).lower() for keyword in ["rate limit", "throttl", "429", "443"]):
                 options["http_headers"]["User-Agent"] = random.choice(USER_AGENTS)
-                console.print(Text("YouTube rate limit detected. Rotating user-agent...", style=COL_WARN))
+                progress_logger.add_log("Rate limit detected. Rotating user-agent...", "warning")
             time.sleep(random.uniform(4, 10))
 
+    progress_logger.add_log("Maximum retries reached", "error")
+    progress_logger.stop()
     console.print(Text("Maximum retries reached. Check connection or try again later.", style=COL_ERR))
     pause_for_reading("Max retries — review above", 15)
 
