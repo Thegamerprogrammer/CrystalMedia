@@ -544,6 +544,8 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
 
     retry_count = 0
     max_retries = 30
+    final_path = None
+    download_completed = False
     while retry_count < max_retries:
         try:
             with YoutubeDL(options) as downloader:
@@ -564,6 +566,20 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 options["http_headers"]["User-Agent"] = random.choice(USER_AGENTS)
                 progress_logger.add_log("Rate limit detected. Rotating user-agent...", "warning")
             time.sleep(random.uniform(4, 10))
+
+    if download_completed:
+        progress_logger.mark_complete("Download complete!")
+        if final_path:
+            progress_logger.add_log(f"✓ Final file: {final_path}", "success")
+        progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
+        if hasattr(progress_logger, "wait_for_continue"):
+            progress_logger.wait_for_continue("Download success", 30)
+        progress_logger.stop()
+        if final_path:
+            console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
+        else:
+            console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
+        return
 
     progress_logger.add_log("Maximum retries reached", "error")
     progress_logger.stop()
