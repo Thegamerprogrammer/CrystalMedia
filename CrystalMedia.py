@@ -326,9 +326,9 @@ class FixedProgressLogger:
         elif level == "success":
             styled_msg = f"[green]{msg}[/green]"
         else:
-            styled_msg = f"[cyan]{msg}[/cyan]"
+            styled_msg = f"[{COL_MENU}]{msg}[/{COL_MENU}]"
         
-        self.logs.append(Text(styled_msg))
+        self.logs.append(Text.from_markup(styled_msg))
         # Keep last 15 logs visible
         if len(self.logs) > 15:
             self.logs = self.logs[-15:]
@@ -342,7 +342,8 @@ class FixedProgressLogger:
         log_panel = Panel(
             log_text if self.logs else Text("Waiting for output...", style="dim"),
             title="Download Log",
-            border_style="blue"
+            border_style=COL_MENU,
+            title_align="left"
         )
         self.layout["logs"].update(log_panel)
     
@@ -354,7 +355,7 @@ class FixedProgressLogger:
         
         # Update layout with progress
         self.layout["progress"].update(
-            Panel(self.progress, title="Progress", border_style="green")
+            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
     
     def start(self):
@@ -383,8 +384,9 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
     )
     options = {
         "outtmpl": base_path,
-        "quiet": False,
+        "quiet": True,
         "no_warnings": False,
+        "noprogress": True,
         "retries": 20,
         "fragment_retries": 10,
         "keep_fragments": True,
@@ -460,6 +462,8 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             self.logger = logger
         def debug(self, msg):
             if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
+                if 'ETA' in msg or '%' in msg:
+                    return
                 self.logger.add_log(strip_ansi(msg), "info")
         def info(self, msg):
             self.logger.add_log(strip_ansi(msg), "info")
@@ -499,7 +503,6 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         except Exception as e:
             retry_count += 1
             progress_logger.add_log(f"Attempt {retry_count}/{max_retries} failed: {str(e)[:80]}", "warning")
-            console.print(Text(f"Attempt {retry_count}/{max_retries} failed: {str(e)}", style=COL_WARN))
             if any(keyword in str(e).lower() for keyword in ["rate limit", "throttl", "429", "443"]):
                 options["http_headers"]["User-Agent"] = random.choice(USER_AGENTS)
                 progress_logger.add_log("Rate limit detected. Rotating user-agent...", "warning")
