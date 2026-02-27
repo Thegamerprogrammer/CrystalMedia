@@ -306,7 +306,7 @@ class FixedProgressLogger:
         self.layout = Layout()
         self.layout.split_column(
             Layout(name="progress", size=8),
-            Layout(name="logs", minimum_size=10)
+            Layout(name="logs", size=16)
         )
         self.progress = Progress(
             SpinnerColumn(style=COL_MENU),
