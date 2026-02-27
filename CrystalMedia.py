@@ -371,6 +371,16 @@ class FixedProgressLogger:
             Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
     
+    def mark_complete(self, description: str = "Download complete!"):
+        """Show a completed progress state even when file already exists."""
+        if self.task is None:
+            self.task = self.progress.add_task(description, total=100, completed=100)
+        else:
+            self.progress.update(self.task, completed=100, description=description)
+        self.layout["progress"].update(
+            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
+        )
+
     def start(self):
         """Start the live display"""
         self.live.start()
@@ -510,8 +520,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 downloader.extract_info(url, download=True)
             progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
             progress_logger.stop()
-            console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
-            pause_for_reading("Download success — review above", 15)
+            pause_for_reading("Download success — review above", 30)
             return
         except Exception as e:
             retry_count += 1
