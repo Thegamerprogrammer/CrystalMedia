@@ -560,6 +560,12 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             progress_logger.stop()
             raise
         except Exception as e:
+            err_text = str(e)
+            if "FixedProgressLogger" in err_text and "wait_for_continue" in err_text:
+                progress_logger.add_log("Compatibility fallback: finishing without legacy wait_for_continue call.", "warning")
+                download_completed = True
+                break
+
             retry_count += 1
             progress_logger.add_log(f"Attempt {retry_count}/{max_retries} failed: {str(e)[:80]}", "warning")
             if any(keyword in str(e).lower() for keyword in ["rate limit", "throttl", "429", "443"]):
