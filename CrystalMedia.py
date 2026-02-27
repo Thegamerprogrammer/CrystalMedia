@@ -296,6 +296,21 @@ create_folders()
 # ──────────────────────────────────────────────
 # Fixed Progress Logger with Layout
 # ──────────────────────────────────────────────
+
+class ContinuePromptTooltip:
+    """Animated continue prompt rendered inside a tooltip panel."""
+    def __init__(self, message: str = "Download success", border_style: str = COL_WARN):
+        self.message = message
+        self.border_style = border_style
+        self.frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def render(self, remaining: int, frame_idx: int) -> Panel:
+        prompt = Text.assemble(
+            (f"{self.frames[frame_idx]} {self.message} {remaining}...\n", COL_ACC),
+            ("Press Enter or any key to continue", "italic dim")
+        )
+        return Panel(prompt, title="Timeout", border_style=self.border_style, title_align="left", padding=(0, 1))
+
 class FixedProgressLogger:
     """Fixed progress bar + scrolling log panel using Rich Layout"""
     def __init__(self, console_obj, header_text: Text):
