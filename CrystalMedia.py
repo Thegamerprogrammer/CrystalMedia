@@ -120,6 +120,7 @@ from rich.text import Text
 from rich.live import Live
 from rich.layout import Layout
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.spinner import Spinner
 from pyfiglet import Figlet
 import yt_dlp
 from yt_dlp import YoutubeDL
@@ -316,9 +317,21 @@ class FixedProgressLogger:
         )
         self.task = None
         self.live = Live(self.layout, console=self.console, refresh_per_second=4)
+        self.max_logs = 12
+        self.max_log_width = 110
+        self.layout["progress"].update(self._waiting_panel())
         
+    def _waiting_panel(self):
+        """Render spinner placeholder until progress data arrives."""
+        waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
+        return Panel(waiting_spinner, title="Progress", border_style=COL_MENU, title_align="left")
+
     def add_log(self, msg: str, level: str = "info"):
         """Add message to log panel with color coding"""
+        msg = strip_ansi(msg).replace("\n", " ").strip()
+        if len(msg) > self.max_log_width:
+            msg = msg[:self.max_log_width - 1] + "…"
+
         if level == "error":
             styled_msg = f"[red]{msg}[/red]"
         elif level == "warning":
@@ -338,7 +351,7 @@ class FixedProgressLogger:
         for log_entry in self.logs:
             log_text.append(log_entry)
             log_text.append("\n")
-        
+
         log_panel = Panel(
             log_text if self.logs else Text("Waiting for output...", style="dim"),
             title="Download Log",
@@ -346,7 +359,7 @@ class FixedProgressLogger:
             title_align="left"
         )
         self.layout["logs"].update(log_panel)
-    
+
     def update_progress(self, percent: float, description: str = "Downloading"):
         """Update progress bar"""
         if self.task is None:
