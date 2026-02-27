@@ -162,7 +162,7 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
         remaining = seconds
         while remaining > 0:
             content = Text.assemble(
-                (f"{message} {remaining}...\n\n", COL_ACC),
+                (f"{message} {remaining}...\n", COL_ACC),
                 ("Press any key or Enter to continue", "italic dim")
             )
             live.update(
@@ -170,7 +170,7 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
                     content,
                     title="Timeout",
                     border_style=COL_WARN,
-                    padding=(1, 2),
+                    padding=(0, 1),
                 )
             )
             # Cross-platform any-key detection
@@ -186,8 +186,6 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
                     break
             time.sleep(1)
             remaining -= 1
-    console.print(Text("Resuming...", style=COL_ACC))
-    time.sleep(0.5)
 
 # 5-second countdown after import list
 pause_for_reading("Imports complete", 5)
