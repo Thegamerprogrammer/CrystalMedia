@@ -300,7 +300,7 @@ create_folders()
 # ──────────────────────────────────────────────
 class FixedProgressLogger:
     """Fixed progress bar + scrolling log panel using Rich Layout"""
-    def __init__(self, console_obj):
+    def __init__(self, console_obj, header_text: Text):
         self.console = console_obj
         self.logs = []
         self.layout = Layout()
@@ -365,8 +365,6 @@ class FixedProgressLogger:
         if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
-        
-        # Update layout with progress
         self.layout["progress"].update(
             Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
@@ -382,12 +380,22 @@ class FixedProgressLogger:
         )
 
     def start(self):
-        """Start the live display"""
         self.live.start()
-    
+
     def stop(self):
-        """Stop the live display"""
         self.live.stop()
+
+
+def build_download_header(title: str, mode: str, content_type: str, target_dir: Path) -> Text:
+    figlet = Figlet(font='slant')
+    art = figlet.renderText('CrystalMedia')
+    return Text.assemble(
+        (art, COL_TITLE),
+        ("v3.1.9\n", COL_ACC),
+        (("-" * 60) + "\n", COL_MENU),
+        (f"Downloading: {title}\n", COL_ACC),
+        (f"Initiating {mode} {content_type.upper()} download → {target_dir}", COL_MENU),
+    )
 
 # ──────────────────────────────────────────────
 # YouTube download logic (native API + title display + improved logger)
@@ -471,12 +479,12 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
 
     mode = "Playlist" if is_playlist else "Single Item"
-    console.print(Text(f"Initiating {mode} {content_type.upper()} download → {target_dir}", style=COL_ACC))
 
     options = get_ydl_options(is_playlist, content_type)
 
     # Initialize fixed progress logger
-    progress_logger = FixedProgressLogger(console)
+    progress_header = build_download_header(title if "title" in locals() else "Unknown", mode, content_type, target_dir)
+    progress_logger = FixedProgressLogger(console, progress_header)
     progress_logger.start()
     progress_logger.add_log(f"Starting {mode} {content_type.upper()} download", "info")
 
@@ -522,6 +530,9 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             progress_logger.stop()
             pause_for_reading("Download success — review above", 30)
             return
+        except KeyboardInterrupt:
+            progress_logger.stop()
+            raise
         except Exception as e:
             retry_count += 1
             progress_logger.add_log(f"Attempt {retry_count}/{max_retries} failed: {str(e)[:80]}", "warning")
@@ -696,6 +707,7 @@ def main_loop():
                 console.input(Text("\nPress Enter to continue...", style=COL_ACC))
 
         except KeyboardInterrupt:
+            console.print()
             console.print(Text("Keyboard interrupt detected. Returning to main menu.", style=COL_WARN))
             pause_for_reading("Interrupt acknowledged", 15)
         except Exception as e:
