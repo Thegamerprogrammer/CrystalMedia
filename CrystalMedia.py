@@ -120,6 +120,7 @@ from rich.text import Text
 from rich.live import Live
 from rich.layout import Layout
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.spinner import Spinner
 from pyfiglet import Figlet
 import yt_dlp
 from yt_dlp import YoutubeDL
@@ -308,17 +309,29 @@ class FixedProgressLogger:
             Layout(name="logs", minimum_size=10)
         )
         self.progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            SpinnerColumn(style=COL_MENU),
+            TextColumn("[progress.description]{task.description}", style=COL_MENU),
+            BarColumn(complete_style=COL_MENU, finished_style=COL_MENU, pulse_style=COL_MENU),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%", style=COL_MENU),
             console=self.console
         )
         self.task = None
         self.live = Live(self.layout, console=self.console, refresh_per_second=4)
+        self.max_logs = 12
+        self.max_log_width = 110
+        self.layout["progress"].update(self._waiting_panel())
         
+    def _waiting_panel(self):
+        """Render spinner placeholder until progress data arrives."""
+        waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
+        return Panel(waiting_spinner, title="Progress", border_style=COL_MENU, title_align="left")
+
     def add_log(self, msg: str, level: str = "info"):
         """Add message to log panel with color coding"""
+        msg = strip_ansi(msg).replace("\n", " ").strip()
+        if len(msg) > self.max_log_width:
+            msg = msg[:self.max_log_width - 1] + "…"
+
         if level == "error":
             styled_msg = f"[red]{msg}[/red]"
         elif level == "warning":
@@ -326,35 +339,36 @@ class FixedProgressLogger:
         elif level == "success":
             styled_msg = f"[green]{msg}[/green]"
         else:
-            styled_msg = f"[cyan]{msg}[/cyan]"
-        
-        self.logs.append(Text(styled_msg))
-        # Keep last 15 logs visible
-        if len(self.logs) > 15:
-            self.logs = self.logs[-15:]
-        
+            styled_msg = f"[{COL_MENU}]{msg}[/{COL_MENU}]"
+
+        self.logs.append(Text.from_markup(styled_msg))
+        # Keep last logs visible
+        if len(self.logs) > self.max_logs:
+            self.logs = self.logs[-self.max_logs:]
+
         # Update log panel
         log_text = Text()
         for log_entry in self.logs:
             log_text.append(log_entry)
             log_text.append("\n")
-        
+
         log_panel = Panel(
             log_text if self.logs else Text("Waiting for output...", style="dim"),
             title="Download Log",
-            border_style="blue"
+            border_style=COL_MENU,
+            title_align="left"
         )
         self.layout["logs"].update(log_panel)
-    
+
     def update_progress(self, percent: float, description: str = "Downloading"):
         """Update progress bar"""
-        if not self.task:
+        if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
         
         # Update layout with progress
         self.layout["progress"].update(
-            Panel(self.progress, title="Progress", border_style="green")
+            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
     
     def start(self):
@@ -383,8 +397,9 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
     )
     options = {
         "outtmpl": base_path,
-        "quiet": False,
+        "quiet": True,
         "no_warnings": False,
+        "noprogress": True,
         "retries": 20,
         "fragment_retries": 10,
         "keep_fragments": True,
@@ -460,6 +475,8 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             self.logger = logger
         def debug(self, msg):
             if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
+                if 'ETA' in msg or '%' in msg:
+                    return
                 self.logger.add_log(strip_ansi(msg), "info")
         def info(self, msg):
             self.logger.add_log(strip_ansi(msg), "info")
@@ -499,7 +516,6 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         except Exception as e:
             retry_count += 1
             progress_logger.add_log(f"Attempt {retry_count}/{max_retries} failed: {str(e)[:80]}", "warning")
-            console.print(Text(f"Attempt {retry_count}/{max_retries} failed: {str(e)}", style=COL_WARN))
             if any(keyword in str(e).lower() for keyword in ["rate limit", "throttl", "429", "443"]):
                 options["http_headers"]["User-Agent"] = random.choice(USER_AGENTS)
                 progress_logger.add_log("Rate limit detected. Rotating user-agent...", "warning")
