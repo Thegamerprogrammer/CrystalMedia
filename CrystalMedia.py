@@ -340,12 +340,12 @@ class FixedProgressLogger:
             styled_msg = f"[green]{msg}[/green]"
         else:
             styled_msg = f"[{COL_MENU}]{msg}[/{COL_MENU}]"
-
+        
         self.logs.append(Text.from_markup(styled_msg))
-        # Keep last logs visible
-        if len(self.logs) > self.max_logs:
-            self.logs = self.logs[-self.max_logs:]
-
+        # Keep last 15 logs visible
+        if len(self.logs) > 15:
+            self.logs = self.logs[-15:]
+        
         # Update log panel
         log_text = Text()
         for log_entry in self.logs:
