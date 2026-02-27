@@ -316,8 +316,8 @@ class FixedProgressLogger:
             console=self.console
         )
         self.task = None
-        self.live = Live(self.layout, console=self.console, refresh_per_second=4, vertical_overflow="crop")
-        self.max_logs = 14
+        self.live = Live(self.layout, console=self.console, refresh_per_second=4)
+        self.max_logs = 12
         self.max_log_width = 110
         self.layout["progress"].update(self._waiting_panel())
         
@@ -340,12 +340,12 @@ class FixedProgressLogger:
             styled_msg = f"[green]{msg}[/green]"
         else:
             styled_msg = f"[{COL_MENU}]{msg}[/{COL_MENU}]"
-
+        
         self.logs.append(Text.from_markup(styled_msg))
-        # Keep last logs visible
-        if len(self.logs) > self.max_logs:
-            self.logs = self.logs[-self.max_logs:]
-
+        # Keep last 15 logs visible
+        if len(self.logs) > 15:
+            self.logs = self.logs[-15:]
+        
         # Update log panel
         log_text = Text()
         for log_entry in self.logs:
