@@ -308,10 +308,10 @@ class FixedProgressLogger:
             Layout(name="logs", minimum_size=10)
         )
         self.progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            SpinnerColumn(style=COL_MENU),
+            TextColumn("[progress.description]{task.description}", style=COL_MENU),
+            BarColumn(complete_style=COL_MENU, finished_style=COL_MENU, pulse_style=COL_MENU),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%", style=COL_MENU),
             console=self.console
         )
         self.task = None
@@ -349,7 +349,7 @@ class FixedProgressLogger:
     
     def update_progress(self, percent: float, description: str = "Downloading"):
         """Update progress bar"""
-        if not self.task:
+        if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
         
