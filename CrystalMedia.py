@@ -305,8 +305,8 @@ class FixedProgressLogger:
         self.logs = []
         self.layout = Layout()
         self.layout.split_column(
-            Layout(name="progress", size=7),
-            Layout(name="logs", size=14)
+            Layout(name="progress", size=8),
+            Layout(name="logs", size=16)
         )
         self.progress = Progress(
             SpinnerColumn(style=COL_MENU),
@@ -316,8 +316,8 @@ class FixedProgressLogger:
             console=self.console
         )
         self.task = None
-        self.live = Live(self.layout, console=self.console, refresh_per_second=4, vertical_overflow="crop", auto_refresh=True)
-        self.max_logs = 14
+        self.live = Live(self.layout, console=self.console, refresh_per_second=4)
+        self.max_logs = 12
         self.max_log_width = 110
         self.layout["progress"].update(self._waiting_panel())
         
@@ -340,12 +340,12 @@ class FixedProgressLogger:
             styled_msg = f"[green]{msg}[/green]"
         else:
             styled_msg = f"[{COL_MENU}]{msg}[/{COL_MENU}]"
-
+        
         self.logs.append(Text.from_markup(styled_msg))
-        # Keep last logs visible
-        if len(self.logs) > self.max_logs:
-            self.logs = self.logs[-self.max_logs:]
-
+        # Keep last 15 logs visible
+        if len(self.logs) > 15:
+            self.logs = self.logs[-15:]
+        
         # Update log panel
         log_text = Text()
         for log_entry in self.logs:
@@ -484,18 +484,10 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         def __init__(self, logger):
             self.logger = logger
         def debug(self, msg):
-            clean_msg = strip_ansi(msg)
-            lower_msg = clean_msg.lower()
-            if 'already been downloaded' in lower_msg:
-                self.logger.add_log(clean_msg, "success")
-                self.logger.mark_complete("Download complete!")
-                return
-            if '[Merger]' in clean_msg:
-                self.logger.update_progress(100, "Merging")
-            if any(x in clean_msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
-                if 'ETA' in clean_msg or '%' in clean_msg:
+            if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
+                if 'ETA' in msg or '%' in msg:
                     return
-                self.logger.add_log(clean_msg, "info")
+                self.logger.add_log(strip_ansi(msg), "info")
         def info(self, msg):
             self.logger.add_log(strip_ansi(msg), "info")
         def warning(self, msg):
