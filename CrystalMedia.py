@@ -491,17 +491,41 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     class FixedYellowLogger:
         def __init__(self, logger):
             self.logger = logger
+
+        def _handle_message(self, msg: str, level: str = "info"):
+            clean_msg = strip_ansi(msg)
+            lower_msg = clean_msg.lower()
+
+            if 'already been downloaded' in lower_msg:
+                self.logger.add_log(clean_msg, "success")
+                self.logger.mark_complete("Download complete!")
+                return
+
+            if '[merger]' in lower_msg or 'merging formats into' in lower_msg:
+                self.logger.update_progress(100, "Merging")
+
+            if 'download complete' in lower_msg and 'processing' in lower_msg:
+                self.logger.update_progress(100, "Processing")
+
+            if 'ETA' in clean_msg or '%' in clean_msg:
+                return
+
+            if any(x in clean_msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']) or '[merger]' in lower_msg:
+                self.logger.add_log(clean_msg, level)
+
         def debug(self, msg):
             if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
                 if 'ETA' in msg or '%' in msg:
                     return
                 self.logger.add_log(strip_ansi(msg), "info")
         def info(self, msg):
-            self.logger.add_log(strip_ansi(msg), "info")
+            self._handle_message(msg, "info")
+
         def warning(self, msg):
-            self.logger.add_log(strip_ansi(msg), "warning")
+            self._handle_message(msg, "warning")
+
         def error(self, msg):
-            self.logger.add_log(strip_ansi(msg), "error")
+            self._handle_message(msg, "error")
 
     options["logger"] = FixedYellowLogger(progress_logger)
 
@@ -526,6 +550,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         try:
             with YoutubeDL(options) as downloader:
                 downloader.extract_info(url, download=True)
+            progress_logger.mark_complete("Download complete!")
             progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
             progress_logger.stop()
             pause_for_reading("Download success — review above", 30)
