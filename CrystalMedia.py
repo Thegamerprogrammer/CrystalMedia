@@ -550,6 +550,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 downloader.extract_info(url, download=True)
             progress_logger.mark_complete("Download complete!")
             progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
+            progress_logger.wait_for_continue("Download success", 30)
             progress_logger.stop()
             pause_for_reading("Download success — review above", 30)
             return
