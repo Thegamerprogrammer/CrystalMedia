@@ -303,12 +303,8 @@ class FixedProgressLogger:
         self.logs = []
         self.layout = Layout()
         self.layout.split_column(
-            Layout(name="header", size=8),
-            Layout(name="progress", size=6),
-            Layout(name="logs", size=10)
-        )
-        self.layout["header"].update(
-            Panel(header_text, border_style=COL_MENU, title="CrystalMedia", title_align="left")
+            Layout(name="progress", size=8),
+            Layout(name="logs", size=16)
         )
         self.progress = Progress(
             SpinnerColumn(style=COL_MENU),
@@ -318,11 +314,11 @@ class FixedProgressLogger:
             console=self.console
         )
         self.task = None
-        self.live = Live(self.layout, console=self.console, refresh_per_second=4, vertical_overflow="crop", screen=True)
-        self.max_logs = 8
+        self.live = Live(self.layout, console=self.console, refresh_per_second=4)
+        self.max_logs = 12
         self.max_log_width = 110
         self.layout["progress"].update(self._waiting_panel())
-
+        
     def _waiting_panel(self):
         """Render spinner placeholder until progress data arrives."""
         waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
@@ -342,11 +338,13 @@ class FixedProgressLogger:
             styled_msg = f"[green]{msg}[/green]"
         else:
             styled_msg = f"[{COL_MENU}]{msg}[/{COL_MENU}]"
-
+        
         self.logs.append(Text.from_markup(styled_msg))
-        if len(self.logs) > self.max_logs:
-            self.logs = self.logs[-self.max_logs:]
-
+        # Keep last 15 logs visible
+        if len(self.logs) > 15:
+            self.logs = self.logs[-15:]
+        
+        # Update log panel
         log_text = Text()
         for log_entry in self.logs:
             log_text.append(log_entry)
@@ -361,49 +359,23 @@ class FixedProgressLogger:
         self.layout["logs"].update(log_panel)
 
     def update_progress(self, percent: float, description: str = "Downloading"):
+        """Update progress bar"""
         if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
         self.layout["progress"].update(
             Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
-
+    
     def mark_complete(self, description: str = "Download complete!"):
-        complete_text = Text(f"✓ {description}", style=COL_GOOD)
+        """Show a completed progress state even when file already exists."""
+        if self.task is None:
+            self.task = self.progress.add_task(description, total=100, completed=100)
+        else:
+            self.progress.update(self.task, completed=100, description=description)
         self.layout["progress"].update(
-            Panel(complete_text, title="Progress", border_style=COL_GOOD, title_align="left")
+            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
-
-    def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
-        """Show timeout prompt inside progress panel to avoid layout gaps."""
-        remaining = seconds
-        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        frame_idx = 0
-        while remaining > 0:
-            prompt = Text.assemble(
-                (f"{frames[frame_idx]} {message} {remaining}...\n", COL_ACC),
-                ("Press any key or Enter to continue", "italic dim")
-            )
-            self.layout["progress"].update(
-                Panel(prompt, title="Timeout", border_style=COL_WARN, title_align="left", padding=(0, 1))
-            )
-            if platform.system() == "Windows":
-                import msvcrt
-                if msvcrt.kbhit():
-                    msvcrt.getch()
-                    break
-            else:
-                import select
-                try:
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        sys.stdin.read(1)
-                        break
-                except Exception:
-                    # Non-interactive stdin in some environments; just continue countdown
-                    pass
-            time.sleep(1)
-            remaining -= 1
-            frame_idx = (frame_idx + 1) % len(frames)
 
     def start(self):
         self.live.start()
@@ -524,7 +496,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
 
             if 'already been downloaded' in lower_msg:
                 self.logger.add_log(clean_msg, "success")
-                self.logger.mark_complete("Download complete (already exists)!")
+                self.logger.mark_complete("Download complete!")
                 return
 
             if '[merger]' in lower_msg or 'merging formats into' in lower_msg:
@@ -540,8 +512,10 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 self.logger.add_log(clean_msg, level)
 
         def debug(self, msg):
-            self._handle_message(msg, "info")
-
+            if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
+                if 'ETA' in msg or '%' in msg:
+                    return
+                self.logger.add_log(strip_ansi(msg), "info")
         def info(self, msg):
             self._handle_message(msg, "info")
 
@@ -575,16 +549,13 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     while retry_count < max_retries:
         try:
             with YoutubeDL(options) as downloader:
-                final_info = downloader.extract_info(url, download=True)
-
-            if isinstance(final_info, dict):
-                requested = final_info.get("requested_downloads") or []
-                if requested and isinstance(requested[0], dict):
-                    final_path = requested[0].get("filepath")
-                if not final_path:
-                    final_path = final_info.get("_filename")
-            download_completed = True
-            break
+                downloader.extract_info(url, download=True)
+            progress_logger.mark_complete("Download complete!")
+            progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
+            progress_logger.wait_for_continue("Download success", 30)
+            progress_logger.stop()
+            pause_for_reading("Download success — review above", 30)
+            return
         except KeyboardInterrupt:
             progress_logger.stop()
             raise
