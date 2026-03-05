@@ -167,7 +167,7 @@ PRs are welcome for UI polish, reliability improvements, and Spotify-mode recove
 - Leave filename blank in prompt to auto-detect latest CSV in `./csv` that matches playlist name.
 - Playlist title is auto-derived from the Spotify playlist link and used for fuzzy CSV matching.
 
-- ## Interface
+## ✨ Interface
 <img width="1920" height="562" alt="CrystalMEdia" src="https://github.com/user-attachments/assets/79c82e65-bd31-4fb8-9c59-ddfb6740d469" />
-- ![Uploading CrystalMEdia.png…]()
+
 
