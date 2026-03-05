@@ -15,5 +15,5 @@ def run_gui():
 
 
 def run_terminal():
-    from CrystalMedia import main_loop
-    main_loop()
+    from .cli import terminal_main
+    terminal_main()

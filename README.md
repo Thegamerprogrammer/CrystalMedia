@@ -39,6 +39,8 @@ git clone https://github.com/Thegamerprogrammer/CrystalMedia.git
 cd CrystalMedia
 pip install .
 crystalmedia
+# Direct file launcher (now GUI-first)
+python CrystalMedia.py
 ```
 
 On first launch, CrystalMedia runs a dependency preflight/status check and self-healing diagnostics. Runtime auto-install of dependencies is disabled for packaging safety; install/update dependencies through pip.
@@ -48,6 +50,10 @@ On first launch, CrystalMedia runs a dependency preflight/status check and self-
 
 
 ## 🧊 Glass GUI (PyWebView)
+
+> `CrystalMedia.py` in repo root is now a GUI-first launcher/backbone.
+> Use `python CrystalMedia.py --terminal` only for legacy placeholder behavior.
+
 
 CrystalMedia now runs as a **glassmorphism HTML GUI** powered by `pywebview` (default mode):
 
