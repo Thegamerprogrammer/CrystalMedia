@@ -250,26 +250,40 @@ pause_for_reading("Imports complete", 5)
 # Download FFmpeg directly from gyan.dev if missing
 # ──────────────────────────────────────────────
 def download_ffmpeg():
-    ffmpeg_dir = Path("ffmpeg")
+    ffmpeg_dir = APP_ROOT / "ffmpeg"
     bin_dir = ffmpeg_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     if command_exists("ffmpeg"):
         console.print(Text("FFmpeg already found in PATH — skipping.", style=COL_GOOD))
         return
-    console.print(Text("FFmpeg missing — downloading from gyan.dev...", style=COL_WARN))
-    base_url = "https://www.gyan.dev/ffmpeg/builds/"
-    if platform.system() == "Windows":
-        url = base_url + "ffmpeg-release-essentials.zip"
-        archive = "ffmpeg.zip"
-    else:
-        url = base_url + "ffmpeg-release-amd64-static.tar.xz"
-        archive = "ffmpeg.tar.xz"
-    archive_path = Path(archive)
+
+    console.print(Text("FFmpeg missing — preparing architecture-aware download...", style=COL_WARN))
+    system = platform.system()
+    machine = platform.machine().lower()
+    archive_path = None
+
     try:
+        if system == "Windows":
+            if machine not in ("amd64", "x86_64"):
+                raise RuntimeError(f"Unsupported Windows architecture for bundled FFmpeg: {machine}")
+            url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+            archive_path = Path("ffmpeg.zip")
+        elif system == "Linux":
+            if machine not in ("amd64", "x86_64"):
+                raise RuntimeError(f"Unsupported Linux architecture for bundled FFmpeg: {machine}")
+            url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-amd64-static.tar.xz"
+            archive_path = Path("ffmpeg.tar.xz")
+        elif system == "Darwin":
+            # gyan.dev is Windows-centric; avoid downloading wrong binaries on macOS/ARM.
+            raise RuntimeError("Automatic FFmpeg download is disabled on macOS. Please install via Homebrew: brew install ffmpeg")
+        else:
+            raise RuntimeError(f"Unsupported OS for auto-download: {system}")
+
         console.print(f"[cyan]Downloading {url.split('/')[-1]}...[/cyan]")
         urllib.request.urlretrieve(url, archive_path)
         console.print("[cyan]Extracting binaries...[/cyan]")
-        if platform.system() == "Windows":
+
+        if system == "Windows":
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
                 for file in zip_ref.namelist():
                     if file.endswith(("ffmpeg.exe", "ffprobe.exe")):
@@ -285,13 +299,15 @@ def download_ffmpeg():
                         extracted = bin_dir / member.name
                         if extracted.parent != bin_dir:
                             shutil.move(extracted, bin_dir / extracted.name.split('/')[-1])
+
         archive_path.unlink(missing_ok=True)
-        console.print(Text("FFmpeg binaries downloaded to ./ffmpeg/bin", style=COL_GOOD))
-        os.environ["PATH"] += os.pathsep + str(bin_dir.absolute())
-        console.print(f"[dim]Added {bin_dir} to session PATH[/dim]")
+        console.print(Text(f"FFmpeg binaries downloaded to {bin_dir}", style=COL_GOOD))
+        ask_add_to_path(str(bin_dir.absolute()), "FFmpeg binaries")
     except Exception as e:
+        if archive_path is not None:
+            archive_path.unlink(missing_ok=True)
         console.print(Text(f"FFmpeg download failed: {str(e)}", style=COL_ERR))
-        console.print(Text("Manually grab it from https://www.gyan.dev/ffmpeg/builds/", style=COL_WARN))
+        console.print(Text("Install manually (Linux/macOS: package manager, Windows: gyan.dev).", style=COL_WARN))
 
 # Check & download FFmpeg if needed
 if not command_exists("ffmpeg"):
