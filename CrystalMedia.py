@@ -5,8 +5,7 @@ CrystalMedia Downloader – Stable Production Release v3.1.9
 ==========================================================
 Cross-platform media downloader for YouTube & Spotify.
 YouTube: works like a beast
-Spotify: currently non-functional (Feb 2026 dev mode killed shared creds)
-Refer: https://github.com/spotDL/spotify-downloader/issues/2617
+Spotify: fallback mode available (metadata + yt-dlp search pipeline)
 Author: Thegamerprogrammer
 License: MIT
 """
@@ -25,6 +24,67 @@ from pathlib import Path
 import zipfile
 import tarfile
 import urllib.request
+import html
+import json
+from datetime import datetime
+
+
+APP_ROOT = Path("CrystalMedia")
+LOG_ROOT = APP_ROOT / "logs"
+DOWNLOADS_ROOT = APP_ROOT / "downloads"
+RUNTIME_LOG = LOG_ROOT / "log.txt"
+CRASH_LOG = LOG_ROOT / "crash.txt"
+DEPS_LOG = LOG_ROOT / "deps.txt"
+
+
+def _ensure_app_layout():
+    APP_ROOT.mkdir(exist_ok=True)
+    LOG_ROOT.mkdir(parents=True, exist_ok=True)
+    DOWNLOADS_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+def _append_file(path: Path, line: str):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def log_runtime(msg: str):
+    _append_file(RUNTIME_LOG, f"[{datetime.now().isoformat(timespec='seconds')}] {msg}")
+
+
+def log_crash(msg: str):
+    _append_file(CRASH_LOG, f"[{datetime.now().isoformat(timespec='seconds')}] {msg}")
+
+
+def check_log_rotation(max_mb: int = 500):
+    if not RUNTIME_LOG.exists():
+        return
+    size_mb = RUNTIME_LOG.stat().st_size / (1024 * 1024)
+    if size_mb <= max_mb:
+        return
+    print(f"\n[Warning] {RUNTIME_LOG} is {size_mb:.1f} MB (limit {max_mb} MB).")
+    ans = input("Keep existing log file? [Y/n]: ").strip().lower()
+    if ans in ("n", "no"):
+        RUNTIME_LOG.unlink(missing_ok=True)
+        log_runtime("Rotated runtime log after user confirmation.")
+
+
+def print_dependency_notice():
+    print("CrystalMedia requires the following dependencies to work:")
+    print(" - Deno / Node.js: JavaScript challenge runtime for yt-dlp signature solving.")
+    print(" - yt-dlp: media extraction/download engine.")
+    print(" - ffmpeg: remuxing and MP3 extraction.")
+    print(" - spotdl: legacy Spotify fallback path.")
+    print(" - rich + pyfiglet: terminal UI and splash rendering.")
+    print("Windows PATH note: Scripts folder like %APPDATA%\Python\PythonXY\Scripts.")
+    print("Linux/macOS PATH counterpart: ~/.local/bin and shell profile export PATH updates.")
+
+
+_ensure_app_layout()
+check_log_rotation()
+print_dependency_notice()
+log_runtime("Startup: dependency preflight shown.")
 
 # ──────────────────────────────────────────────
 # ANSI stripper for yt-dlp colored progress strings
@@ -39,6 +99,17 @@ def strip_ansi(text: str) -> str:
 def command_exists(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
+
+def ask_add_to_path(path_value: str, reason: str):
+    print(f"\nAdd to PATH for {reason}?\n  {path_value}")
+    ans = input("Add now? [Y/n]: ").strip().lower()
+    if ans in ('', 'y', 'yes'):
+        os.environ["PATH"] += os.pathsep + path_value
+        log_runtime(f"PATH updated: {path_value}")
+        return True
+    log_runtime(f"PATH unchanged (user declined): {path_value}")
+    return False
+
 def ask_install(what: str) -> bool:
     print(f"\nCrystalMedia needs {what} to not be a broken toy.")
     ans = input("Install now? [Y/n]: ").strip().lower()
@@ -51,7 +122,60 @@ def run_quiet(cmd_list):
     except:
         return False
 
+
+def run_shell_quiet(cmd: str):
+    try:
+        subprocess.check_call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except:
+        return False
+
+
+def detect_linux_distro() -> str:
+    if platform.system() != "Linux":
+        return ""
+    os_release = Path("/etc/os-release")
+    if not os_release.exists():
+        return ""
+    data = os_release.read_text(encoding="utf-8", errors="ignore").lower()
+    for key in ["ubuntu", "debian", "fedora", "rhel", "centos", "arch", "manjaro", "opensuse", "suse", "alpine"]:
+        if key in data:
+            return key
+    return "linux"
+
+
+def install_node_runtime_os_aware() -> bool:
+    """Install Node.js only with platform-appropriate installers."""
+    system = platform.system()
+    if system == "Windows":
+        if command_exists("winget"):
+            return run_quiet(["winget", "install", "OpenJS.NodeJS.LTS", "--silent"])
+        if command_exists("choco"):
+            return run_quiet(["choco", "install", "nodejs-lts", "-y"])
+        return False
+    if system == "Darwin":
+        if command_exists("brew"):
+            return run_quiet(["brew", "install", "node"])
+        return False
+
+    distro = detect_linux_distro()
+    if command_exists("apt-get"):
+        return run_shell_quiet("sudo apt-get update && sudo apt-get install -y nodejs npm")
+    if command_exists("dnf"):
+        return run_shell_quiet("sudo dnf install -y nodejs npm")
+    if command_exists("yum"):
+        return run_shell_quiet("sudo yum install -y nodejs npm")
+    if command_exists("pacman"):
+        return run_shell_quiet("sudo pacman -Sy --noconfirm nodejs npm")
+    if command_exists("zypper"):
+        return run_shell_quiet("sudo zypper --non-interactive install nodejs npm")
+    if command_exists("apk"):
+        return run_shell_quiet("sudo apk add --no-cache nodejs npm")
+    log_runtime(f"No supported package manager for Node.js install on distro={distro}")
+    return False
+
 print("CrystalMedia performing dependency health check...")
+log_runtime("Dependency health check started.")
 
 # Windows: dynamic user Scripts PATH
 if platform.system() == "Windows":
@@ -65,15 +189,13 @@ if platform.system() == "Windows":
         user_scripts_str = os.path.expanduser(rf"~\AppData\Roaming\Python\{py_ver}\Scripts")
 
     if user_scripts_str not in os.environ["PATH"]:
-        os.environ["PATH"] += os.pathsep + user_scripts_str
-        print(f"Added real Windows user Scripts to PATH: {user_scripts_str}")
+        ask_add_to_path(user_scripts_str, "Windows Python user scripts")
 
 # Unix/macOS/Linux: add ~/.local/bin if missing
 elif platform.system() in ("Linux", "Darwin"):
     local_bin = os.path.expanduser("~/.local/bin")
     if local_bin not in os.environ.get("PATH", "").split(os.pathsep):
-        os.environ["PATH"] += os.pathsep + local_bin
-        print(f"Added ~/.local/bin to PATH for Unix/macOS compatibility")
+        ask_add_to_path(local_bin, "Unix/macOS local user binaries")
 
 # Deno
 if not command_exists("deno"):
@@ -82,11 +204,20 @@ if not command_exists("deno"):
         if platform.system() == "Windows":
             run_quiet(["powershell", "-Command", "irm https://deno.land/install.ps1 | iex"])
         else:
-            run_quiet(["curl", "-fsSL", "https://deno.land/install.sh", "|", "sh"])
+            run_shell_quiet("curl -fsSL https://deno.land/install.sh | sh")
         if not command_exists("deno"):
             print("Deno install failed. Go to https://deno.com manually.")
     else:
         print("Deno skipped — YouTube may choke on protected videos.")
+
+# Node.js (alternate JS runtime for yt-dlp challenge solving)
+if not (command_exists("node") or command_exists("nodejs")):
+    if ask_install("Node.js (fallback JavaScript runtime for yt-dlp)"):
+        print("Installing Node.js with OS-aware package manager...")
+        ok = install_node_runtime_os_aware()
+        if not ok:
+            print("Node.js install helper could not complete automatically.")
+            print("Install manually: https://nodejs.org/en/download")
 
 # yt-dlp
 if not command_exists("yt-dlp"):
@@ -100,6 +231,28 @@ if not command_exists("spotdl"):
         print("Installing spotdl...")
         run_quiet([sys.executable, "-m", "pip", "install", "--upgrade", "spotdl"])
 
+
+
+def available_js_runtimes():
+    runtimes = []
+    if command_exists("deno"):
+        runtimes.append("deno")
+    if command_exists("node"):
+        runtimes.append("node")
+    elif command_exists("nodejs"):
+        runtimes.append("nodejs")
+    return runtimes
+
+
+def refresh_js_runtimes():
+    """Attempt lightweight runtime update/health checks for yt-dlp JS challenges."""
+    if command_exists("deno"):
+        run_quiet(["deno", "upgrade"])
+    if command_exists("node"):
+        run_quiet(["node", "--version"])
+    elif command_exists("nodejs"):
+        run_quiet(["nodejs", "--version"])
+
 # rich + pyfiglet
 for pkg in ["rich", "pyfiglet"]:
     try:
@@ -110,6 +263,8 @@ for pkg in ["rich", "pyfiglet"]:
             run_quiet([sys.executable, "-m", "pip", "install", "--upgrade", pkg])
 
 print("Dependency health check completed. Importing libraries...\n")
+_append_file(DEPS_LOG, f"[{datetime.now().isoformat(timespec='seconds')}] deno={command_exists('deno')} node={command_exists('node') or command_exists('nodejs')} yt-dlp={command_exists('yt-dlp')} ffmpeg={command_exists('ffmpeg')} spotdl={command_exists('spotdl')}")
+log_runtime("Dependency health check completed.")
 
 # ──────────────────────────────────────────────
 # NOW import external libraries
@@ -120,6 +275,7 @@ from rich.text import Text
 from rich.live import Live
 from rich.layout import Layout
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.spinner import Spinner
 from pyfiglet import Figlet
 import yt_dlp
 from yt_dlp import YoutubeDL
@@ -151,6 +307,7 @@ for name, desc in libs:
     console.print(f" • [bold green]{name}[/bold green] → {desc}")
 
 console.print("")
+refresh_js_runtimes()
 
 # ──────────────────────────────────────────────
 # Clean Rich Live countdown INSIDE the yellow panel
@@ -161,15 +318,15 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
         remaining = seconds
         while remaining > 0:
             content = Text.assemble(
-                (f"{message} {remaining}...\n\n", COL_ACC),
-                ("Press any key or Enter to continue", "italic dim")
+                (f"{message} {remaining}...\n", COL_ACC),
+                ("Press Enter or any key to continue", "italic dim")
             )
             live.update(
                 Panel(
                     content,
                     title="Timeout",
                     border_style=COL_WARN,
-                    padding=(1, 2),
+                    padding=(0, 1),
                 )
             )
             # Cross-platform any-key detection
@@ -180,13 +337,14 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
                     break
             else:
                 import select
-                if select.select([sys.stdin], [], [], 0.1)[0]:
-                    sys.stdin.read(1)
-                    break
+                try:
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
+                        sys.stdin.read(1)
+                        break
+                except Exception:
+                    pass
             time.sleep(1)
             remaining -= 1
-    console.print(Text("Resuming...", style=COL_ACC))
-    time.sleep(0.5)
 
 # 5-second countdown after import list
 pause_for_reading("Imports complete", 5)
@@ -255,19 +413,6 @@ def display_full_splash():
     console.print(Text(art, style=COL_TITLE))
     console.print(Text("v3.1.9", style=COL_ACC))
     console.print("-" * 60)
-    console.print(Panel(
-        Text(
-            "Spotify mode: NON-FUNCTIONAL (February 2026 Developer Mode update)\n"
-            "Shared credentials are rate-limited or rejected (403 / 86400s errors)\n"
-            "Refer: https://github.com/spotDL/spotify-downloader/issues/2617\n"
-            "Upgrade spotdl when resolved: pip install --upgrade spotdl",
-            justify="center",
-            style="bold red"
-        ),
-        title="Important Notice",
-        border_style="red"
-    ))
-    pause_for_reading("Reading warning", 15)
 
 def display_clean_splash():
     clear_screen()
@@ -284,7 +429,7 @@ def clear_screen():
 # Directory structure
 # ──────────────────────────────────────────────
 def create_folders():
-    base = Path("downloads")
+    base = DOWNLOADS_ROOT
     base.mkdir(exist_ok=True)
     for category in ["YT VIDEO", "YT MUSIC", "SPOTIFY"]:
         for subcategory in ["Single", "Playlist"]:
@@ -297,28 +442,62 @@ create_folders()
 # ──────────────────────────────────────────────
 # Fixed Progress Logger with Layout
 # ──────────────────────────────────────────────
+
+class ContinuePromptTooltip:
+    """Animated continue prompt rendered inside a tooltip panel."""
+    def __init__(self, message: str = "Download success", border_style: str = COL_WARN):
+        self.message = message
+        self.border_style = border_style
+        self.frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def render(self, remaining: int, frame_idx: int) -> Panel:
+        prompt = Text.assemble(
+            (f"{self.frames[frame_idx]} {self.message} {remaining}...\n", COL_ACC),
+            ("Press Enter or any key to continue", "italic dim")
+        )
+        return Panel(prompt, title="Timeout", border_style=self.border_style, title_align="left", padding=(0, 1))
+
 class FixedProgressLogger:
     """Fixed progress bar + scrolling log panel using Rich Layout"""
-    def __init__(self, console_obj):
+    def __init__(self, console_obj, header_text: Text):
         self.console = console_obj
         self.logs = []
         self.layout = Layout()
         self.layout.split_column(
-            Layout(name="progress", size=8),
-            Layout(name="logs", minimum_size=10)
+            Layout(name="header", size=10),
+            Layout(name="progress", size=6),
+            Layout(name="logs", size=10)
+        )
+        self.layout["header"].update(
+            Panel(header_text, border_style=COL_MENU, title="CrystalMedia", title_align="left")
         )
         self.progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            SpinnerColumn(style=COL_MENU),
+            TextColumn("[progress.description]{task.description}", style=COL_MENU),
+            BarColumn(complete_style=COL_MENU, finished_style=COL_MENU, pulse_style=COL_MENU),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%", style=COL_MENU),
             console=self.console
         )
         self.task = None
-        self.live = Live(self.layout, console=self.console, refresh_per_second=4)
-        
+        self.live = Live(self.layout, console=self.console, refresh_per_second=4, vertical_overflow="crop", screen=True)
+        self.max_logs = 8
+        self.max_log_width = 110
+        self.layout["progress"].update(self._waiting_panel())
+        # Ensure explicit instance attribute exists for compatibility with stale/runtime checks
+        self.wait_for_continue = self.wait_for_continue
+        self.continue_tooltip = ContinuePromptTooltip()
+
+    def _waiting_panel(self):
+        """Render spinner placeholder until progress data arrives."""
+        waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
+        return Panel(waiting_spinner, title="Progress", border_style=COL_MENU, title_align="left")
+
     def add_log(self, msg: str, level: str = "info"):
         """Add message to log panel with color coding"""
+        msg = strip_ansi(msg).replace("\n", " ").strip()
+        if len(msg) > self.max_log_width:
+            msg = msg[:self.max_log_width - 1] + "…"
+
         if level == "error":
             styled_msg = f"[red]{msg}[/red]"
         elif level == "warning":
@@ -326,44 +505,124 @@ class FixedProgressLogger:
         elif level == "success":
             styled_msg = f"[green]{msg}[/green]"
         else:
-            styled_msg = f"[cyan]{msg}[/cyan]"
-        
-        self.logs.append(Text(styled_msg))
-        # Keep last 15 logs visible
-        if len(self.logs) > 15:
-            self.logs = self.logs[-15:]
-        
-        # Update log panel
+            styled_msg = f"[{COL_MENU}]{msg}[/{COL_MENU}]"
+
+        self.logs.append(Text.from_markup(styled_msg))
+        log_runtime(f"[{level.upper()}] {msg}")
+        if level in ("error", "warning"):
+            log_crash(msg)
+        if len(self.logs) > self.max_logs:
+            self.logs = self.logs[-self.max_logs:]
+
         log_text = Text()
         for log_entry in self.logs:
             log_text.append(log_entry)
             log_text.append("\n")
-        
+
         log_panel = Panel(
             log_text if self.logs else Text("Waiting for output...", style="dim"),
             title="Download Log",
-            border_style="blue"
+            border_style=COL_MENU,
+            title_align="left"
         )
         self.layout["logs"].update(log_panel)
-    
+
     def update_progress(self, percent: float, description: str = "Downloading"):
-        """Update progress bar"""
-        if not self.task:
+        if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
-        
-        # Update layout with progress
         self.layout["progress"].update(
-            Panel(self.progress, title="Progress", border_style="green")
+            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
-    
+
+    def mark_complete(self, description: str = "Download complete!"):
+        complete_text = Text(f"✓ {description}", style=COL_GOOD)
+        self.layout["progress"].update(
+            Panel(complete_text, title="Progress", border_style=COL_GOOD, title_align="left")
+        )
+
+    def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
+        return self._wait_for_continue_impl(message, seconds)
+
+    def _wait_for_continue_impl(self, message: str = "Download success", seconds: int = 30):
+        """Show timeout prompt inside progress panel to avoid layout gaps."""
+        remaining = seconds
+        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        frame_idx = 0
+        while remaining > 0:
+            self.continue_tooltip.message = message
+            self.layout["progress"].update(self.continue_tooltip.render(remaining, frame_idx))
+            if platform.system() == "Windows":
+                import msvcrt
+                if msvcrt.kbhit():
+                    msvcrt.getch()
+                    break
+            else:
+                import select
+                try:
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
+                        sys.stdin.read(1)
+                        break
+                except Exception:
+                    # Non-interactive stdin in some environments; just continue countdown
+                    pass
+            time.sleep(1)
+            remaining -= 1
+            frame_idx = (frame_idx + 1) % len(frames)
+
     def start(self):
-        """Start the live display"""
         self.live.start()
-    
+
     def stop(self):
-        """Stop the live display"""
         self.live.stop()
+
+
+def show_inline_continue_prompt(progress_logger, message: str = "Download success", seconds: int = 30):
+    """Compatibility wrapper so post-download prompt never crashes on missing method."""
+    wait_fn = getattr(progress_logger, "wait_for_continue", None)
+    if callable(wait_fn):
+        wait_fn(message, seconds)
+        return
+
+    # Fallback path for stale runtime objects/classes.
+    with Live(console=console, refresh_per_second=4, transient=True) as live:
+        remaining = seconds
+        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        frame_idx = 0
+        while remaining > 0:
+            content = Text.assemble(
+                (f"{frames[frame_idx]} {message} {remaining}...\n", COL_ACC),
+                ("Press Enter or any key to continue", "italic dim")
+            )
+            live.update(Panel(content, title="Timeout", border_style=COL_WARN, padding=(0, 1)))
+            if platform.system() == "Windows":
+                import msvcrt
+                if msvcrt.kbhit():
+                    msvcrt.getch()
+                    break
+            else:
+                import select
+                try:
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
+                        sys.stdin.read(1)
+                        break
+                except Exception:
+                    pass
+            time.sleep(1)
+            remaining -= 1
+            frame_idx = (frame_idx + 1) % len(frames)
+
+
+def build_download_header(title: str, mode: str, content_type: str, target_dir: Path) -> Text:
+    figlet = Figlet(font='slant')
+    art = figlet.renderText('CrystalMedia')
+    return Text.assemble(
+        (art, COL_TITLE),
+        ("v3.1.9\n", COL_ACC),
+        (("-" * 60) + "\n", COL_MENU),
+        (f"Downloading: {title}\n", COL_ACC),
+        (f"Initiating {mode} {content_type.upper()} download → {target_dir}", COL_MENU),
+    )
 
 # ──────────────────────────────────────────────
 # YouTube download logic (native API + title display + improved logger)
@@ -377,14 +636,15 @@ USER_AGENTS = [
 def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
     subfolder = "Playlist" if is_playlist else "Single"
     base_path = (
-        f"downloads/{'YT VIDEO' if content_type == 'video' else 'YT MUSIC'}/{subfolder}/%(playlist_title)s/%(title)s.%(ext)s"
+        str(DOWNLOADS_ROOT / ("YT VIDEO" if content_type == "video" else "YT MUSIC") / subfolder / "%(playlist_title)s" / "%(title)s.%(ext)s")
         if is_playlist else
-        f"downloads/{'YT VIDEO' if content_type == 'video' else 'YT MUSIC'}/{subfolder}/%(title)s.%(ext)s"
+        str(DOWNLOADS_ROOT / ("YT VIDEO" if content_type == "video" else "YT MUSIC") / subfolder / "%(title)s.%(ext)s")
     )
     options = {
         "outtmpl": base_path,
-        "quiet": False,
+        "quiet": True,
         "no_warnings": False,
+        "noprogress": True,
         "retries": 20,
         "fragment_retries": 10,
         "keep_fragments": True,
@@ -393,6 +653,7 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         "http_headers": {"User-Agent": random.choice(USER_AGENTS)},
         "remux_video": "mp4",
         "format_sort": ["ext:mp4:m4a"],
+        "js_runtimes": available_js_runtimes(),
     }
     if is_playlist:
         options.update({"sleep_requests": 2, "sleep_interval": 5, "max_sleep_interval": 15})
@@ -442,31 +703,55 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         console.print(Text("Could not extract title — downloading anyway...", style=COL_WARN))
 
     subfolder = "Playlist" if is_playlist else "Single"
-    target_dir = Path("downloads") / ("YT VIDEO" if content_type == "video" else "YT MUSIC") / subfolder
+    target_dir = DOWNLOADS_ROOT / ("YT VIDEO" if content_type == "video" else "YT MUSIC") / subfolder
     target_dir.mkdir(parents=True, exist_ok=True)
 
     mode = "Playlist" if is_playlist else "Single Item"
-    console.print(Text(f"Initiating {mode} {content_type.upper()} download → {target_dir}", style=COL_ACC))
 
     options = get_ydl_options(is_playlist, content_type)
 
     # Initialize fixed progress logger
-    progress_logger = FixedProgressLogger(console)
+    progress_header = build_download_header(title if "title" in locals() else "Unknown", mode, content_type, target_dir)
+    progress_logger = FixedProgressLogger(console, progress_header)
     progress_logger.start()
     progress_logger.add_log(f"Starting {mode} {content_type.upper()} download", "info")
 
     class FixedYellowLogger:
         def __init__(self, logger):
             self.logger = logger
+
+        def _handle_message(self, msg: str, level: str = "info"):
+            clean_msg = strip_ansi(msg)
+            lower_msg = clean_msg.lower()
+
+            if 'already been downloaded' in lower_msg:
+                self.logger.add_log(clean_msg, "success")
+                self.logger.mark_complete("Download complete (already exists)!")
+                return
+
+            if '[merger]' in lower_msg or 'merging formats into' in lower_msg:
+                self.logger.update_progress(100, "Merging")
+
+            if 'download complete' in lower_msg and 'processing' in lower_msg:
+                self.logger.update_progress(100, "Processing")
+
+            if 'ETA' in clean_msg or '%' in clean_msg:
+                return
+
+            if any(x in clean_msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']) or '[merger]' in lower_msg:
+                self.logger.add_log(clean_msg, level)
+
         def debug(self, msg):
-            if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
-                self.logger.add_log(strip_ansi(msg), "info")
+            self._handle_message(msg, "info")
+
         def info(self, msg):
-            self.logger.add_log(strip_ansi(msg), "info")
+            self._handle_message(msg, "info")
+
         def warning(self, msg):
-            self.logger.add_log(strip_ansi(msg), "warning")
+            self._handle_message(msg, "warning")
+
         def error(self, msg):
-            self.logger.add_log(strip_ansi(msg), "error")
+            self._handle_message(msg, "error")
 
     options["logger"] = FixedYellowLogger(progress_logger)
 
@@ -487,71 +772,212 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
 
     retry_count = 0
     max_retries = 30
-    while retry_count < max_retries:
+    final_path = None
+    download_completed = False
+
+    runtime_candidates = ["deno", "node", "deno,node", "node,deno"]
+    for runtime_try in range(4):
+        runtime_value = runtime_candidates[runtime_try]
+        runtime_list = [x.strip() for x in runtime_value.split(",") if x.strip()]
+        options["js_runtimes"] = runtime_list
+        progress_logger.add_log(f"JS runtime try {runtime_try + 1}/4 → {runtime_value}", "info")
+
+        while retry_count < max_retries:
+            try:
+                with YoutubeDL(options) as downloader:
+                    final_info = downloader.extract_info(url, download=True)
+
+                if isinstance(final_info, dict):
+                    requested = final_info.get("requested_downloads") or []
+                    if requested and isinstance(requested[0], dict):
+                        final_path = requested[0].get("filepath")
+                    if not final_path:
+                        final_path = final_info.get("_filename")
+                download_completed = True
+                break
+            except KeyboardInterrupt:
+                progress_logger.stop()
+                raise
+            except Exception as e:
+                err_text = str(e)
+                retry_count += 1
+                progress_logger.add_log(f"Attempt {retry_count}/{max_retries} failed: {err_text[:80]}", "warning")
+                if any(keyword in err_text.lower() for keyword in ["rate limit", "throttl", "429", "443"]):
+                    options["http_headers"]["User-Agent"] = random.choice(USER_AGENTS)
+                    progress_logger.add_log("Rate limit detected. Rotating user-agent...", "warning")
+                if any(k in err_text.lower() for k in ["jsc", "challenge", "signature", "deno", "node"]):
+                    progress_logger.add_log("JS challenge/runtime issue detected; switching runtime profile...", "warning")
+                    break
+                time.sleep(random.uniform(4, 10))
+
+        if download_completed:
+            break
+
+    if not download_completed:
+        progress_logger.stop()
+        console.print(Text("JS runtime retries exhausted. Falling back to noisy yt-dlp output...", style=COL_WARN))
+        noisy_options = dict(options)
+        noisy_options["quiet"] = False
+        noisy_options["noprogress"] = False
+        noisy_options["no_warnings"] = False
+        noisy_options.pop("logger", None)
+        noisy_options.pop("progress_hooks", None)
         try:
-            with YoutubeDL(options) as downloader:
-                downloader.extract_info(url, download=True)
-            progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
-            progress_logger.stop()
-            console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
-            pause_for_reading("Download success — review above", 15)
-            return
+            with YoutubeDL(noisy_options) as noisy_downloader:
+                final_info = noisy_downloader.extract_info(url, download=True)
+            if isinstance(final_info, dict):
+                requested = final_info.get("requested_downloads") or []
+                if requested and isinstance(requested[0], dict):
+                    final_path = requested[0].get("filepath")
+                if not final_path:
+                    final_path = final_info.get("_filename")
+            download_completed = True
         except Exception as e:
-            retry_count += 1
-            progress_logger.add_log(f"Attempt {retry_count}/{max_retries} failed: {str(e)[:80]}", "warning")
-            console.print(Text(f"Attempt {retry_count}/{max_retries} failed: {str(e)}", style=COL_WARN))
-            if any(keyword in str(e).lower() for keyword in ["rate limit", "throttl", "429", "443"]):
-                options["http_headers"]["User-Agent"] = random.choice(USER_AGENTS)
-                progress_logger.add_log("Rate limit detected. Rotating user-agent...", "warning")
-            time.sleep(random.uniform(4, 10))
+            console.print(Text(f"Noisy fallback failed: {str(e)}", style=COL_ERR))
+
+    if download_completed:
+        progress_logger.mark_complete("Download complete!")
+        if final_path:
+            progress_logger.add_log(f"✓ Final file: {final_path}", "success")
+        progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
+        progress_logger.wait_for_continue("Download success", 30)
+        progress_logger.stop()
+        if final_path:
+            console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
+        else:
+            console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
+        return
 
     progress_logger.add_log("Maximum retries reached", "error")
     progress_logger.stop()
     console.print(Text("Maximum retries reached. Check connection or try again later.", style=COL_ERR))
     pause_for_reading("Max retries — review above", 15)
 
-def download_spotify(url: str, is_playlist: bool) -> None:
-    subfolder = "Playlist" if is_playlist else "Single"
-    target_dir = Path("downloads/SPOTIFY") / subfolder
+def _spotify_oembed_query(url: str) -> str:
+    req = urllib.request.Request(f"https://open.spotify.com/oembed?url={url}", headers={"User-Agent": random.choice(USER_AGENTS)})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+    title = payload.get("title", "")
+    author = payload.get("author_name", "")
+    query = f"{title} {author}".strip()
+    return query
+
+
+def _spotify_page_queries(url: str, max_tracks: int = 30):
+    req = urllib.request.Request(url, headers={"User-Agent": random.choice(USER_AGENTS)})
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        page = resp.read().decode("utf-8", errors="ignore")
+
+    rows = re.findall(r'data-testid="track-row".*?(?=data-testid="track-row"|</body>)', page, flags=re.S)
+    queries = []
+    for row in rows:
+        title_match = re.search(r'data-encore-id="listRowTitle"[^>]*>\s*<span[^>]*>(.*?)</span>', row, flags=re.S)
+        artist_match = re.search(r'data-encore-id="text">(.*?)</span>', row, flags=re.S)
+        if not title_match:
+            continue
+        title = html.unescape(re.sub(r'<[^>]+>', '', title_match.group(1))).strip()
+        artist = html.unescape(re.sub(r'<[^>]+>', '', artist_match.group(1))).strip() if artist_match else ""
+        if not title:
+            continue
+        queries.append(f"{title} {artist}".strip())
+        if len(queries) >= max_tracks:
+            break
+    return queries
+
+
+def _download_spotify_queries_with_ytdlp(queries, target_dir: Path, progress_logger: FixedProgressLogger):
     target_dir.mkdir(parents=True, exist_ok=True)
 
+    class SpotifyYTDLPLogger:
+        def __init__(self, logger):
+            self.logger = logger
+        def debug(self, msg):
+            clean = strip_ansi(str(msg))
+            if '[youtube]' in clean and 'WARNING:' not in clean:
+                self.logger.add_log(clean, 'info')
+        def info(self, msg):
+            clean = strip_ansi(str(msg))
+            if clean:
+                self.logger.add_log(clean, 'info')
+        def warning(self, msg):
+            self.logger.add_log(strip_ansi(str(msg)), 'warning')
+        def error(self, msg):
+            self.logger.add_log(strip_ansi(str(msg)), 'error')
+
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+        "format": "bestaudio/best",
+        "outtmpl": str(target_dir / "%(title)s.%(ext)s"),
+        "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
+        "http_headers": {"User-Agent": random.choice(USER_AGENTS)},
+        "logger": SpotifyYTDLPLogger(progress_logger),
+    }
+
+    count = 0
+    total = max(len(queries), 1)
+    with YoutubeDL(ydl_opts) as ydl:
+        for idx, query in enumerate(queries, start=1):
+            progress_logger.add_log(f"[{idx}/{len(queries)}] Spotify fallback search: {query}", "info")
+            progress_logger.update_progress(((idx - 1) / total) * 100, "Searching & downloading")
+            ydl.download([f"ytsearch1:{query}"])
+            count += 1
+            progress_logger.update_progress((idx / total) * 100, "Searching & downloading")
+
+    return count
+
+
+def download_spotify(url: str, is_playlist: bool) -> None:
+    subfolder = "Playlist" if is_playlist else "Single"
+    target_dir = DOWNLOADS_ROOT / "SPOTIFY" / subfolder
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = "Playlist" if is_playlist else "Single Item"
+    progress_header = build_download_header("Spotify fallback", mode, "audio", target_dir)
+    progress_logger = FixedProgressLogger(console, progress_header)
+    progress_logger.start()
+    progress_logger.add_log("Spotify downloader (no-premium fallback mode)", "info")
+
+    queries = []
     try:
-        spotdl_client = Spotdl()
-        songs = spotdl_client.search([url])
-        title = songs[0].name if songs else "Unknown track"
-        if is_playlist:
-            title = "Playlist"
-        console.print(Text("Downloading: ", style=COL_ACC), end="")
-        console.print(Text(title, style="bold yellow"))
-    except:
-        console.print(Text("Could not extract title — downloading anyway...", style=COL_WARN))
+        if is_playlist or "/playlist/" in url or "/album/" in url:
+            queries = _spotify_page_queries(url)
+        else:
+            q = _spotify_oembed_query(url)
+            if q:
+                queries = [q]
+    except Exception as e:
+        progress_logger.add_log(f"Metadata parsing fallback triggered: {str(e)[:120]}", "warning")
 
-    console.print(Text(f"Attempting to download {'playlist' if is_playlist else 'track'} → {target_dir}", style=COL_ACC))
+    if queries:
+        try:
+            downloaded = _download_spotify_queries_with_ytdlp(queries, target_dir, progress_logger)
+            progress_logger.mark_complete(f"Downloaded {downloaded} track(s)!")
+            progress_logger.add_log(f"✓ Downloaded {downloaded} track(s) → {target_dir}", "success")
+            progress_logger.wait_for_continue("Spotify download success", 30)
+            progress_logger.stop()
+            console.print(Text(f"Downloaded {downloaded} track(s) → {target_dir}", style=COL_GOOD))
+            return
+        except Exception as e:
+            progress_logger.add_log(f"yt-dlp Spotify fallback failed: {str(e)}", "error")
 
-    console.print(Panel(
-        Text(
-            "Spotify mode is non-functional due to February 2026 Developer Mode update.\n"
-            "Shared credentials are rate-limited or rejected (403 / 86400s errors).\n"
-            "Refer: https://github.com/spotDL/spotify-downloader/issues/2617\n"
-            "Upgrade spotdl when resolved: pip install --upgrade spotdl",
-            justify="center",
-            style="bold red"
-        ),
-        title="Spotify Status",
-        border_style="red"
-    ))
-
-    pause_for_reading("Spotify warning — review above", 15)
-
+    progress_logger.add_log("Trying spotdl legacy mode as last fallback...", "warning")
     try:
         spotdl_client = Spotdl()
         songs = spotdl_client.search([url])
         results = spotdl_client.download_songs(songs)
+        progress_logger.mark_complete(f"Downloaded {len(results)} track(s)!")
+        progress_logger.add_log(f"✓ Downloaded {len(results)} track(s) → {target_dir}", "success")
+        progress_logger.wait_for_continue("Spotify download success", 30)
+        progress_logger.stop()
         console.print(Text(f"Downloaded {len(results)} track(s) → {target_dir}", style=COL_GOOD))
-        pause_for_reading("Spotify download finished — review above", 15)
     except Exception as e:
+        progress_logger.stop()
         console.print(Text(f"Spotify download failed: {str(e)}", style=COL_ERR))
+        log_crash(f"Spotify download failed: {str(e)}")
         pause_for_reading("Error — copy the message above", 15)
+
 
 # ──────────────────────────────────────────────
 # Cross-platform arrow-key menu navigation
@@ -572,6 +998,8 @@ def read_key():
         return None
     else:
         import tty, termios, select
+        if not sys.stdin.isatty():
+            return None
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:
@@ -595,7 +1023,7 @@ def read_key():
 # Primary application loop
 # ──────────────────────────────────────────────
 def main_loop():
-    categories = ["YouTube Video (MP4)", "YouTube Music (MP3)", "Spotify (Broken)", "Exit"]
+    categories = ["YouTube Video (MP4)", "YouTube Music (MP3)", "Spotify", "Exit"]
     selected_index = 0
 
     # FIX: Clear any leftover keypresses from the library countdown
@@ -652,25 +1080,12 @@ def main_loop():
                 elif category_choice == "2":
                     download_youtube(url_input, "audio", is_playlist)
                 elif category_choice == "3":
-                    display_clean_splash()
-                    console.print(Panel(
-                        Text(
-                            "Spotify mode is non-functional due to February 2026 Developer Mode update.\n"
-                            "Shared credentials are rate-limited or rejected (403 / 86400s errors).\n"
-                            "Refer: https://github.com/spotDL/spotify-downloader/issues/2617\n"
-                            "Upgrade spotdl when resolved: pip install --upgrade spotdl",
-                            justify="center",
-                            style="bold red"
-                        ),
-                        title="Spotify Status",
-                        border_style="red"
-                    ))
-                    pause_for_reading("Spotify warning — review above", 15)
                     download_spotify(url_input, is_playlist)
 
                 console.input(Text("\nPress Enter to continue...", style=COL_ACC))
 
         except KeyboardInterrupt:
+            console.print()
             console.print(Text("Keyboard interrupt detected. Returning to main menu.", style=COL_WARN))
             pause_for_reading("Interrupt acknowledged", 15)
         except Exception as e:
@@ -679,6 +1094,7 @@ def main_loop():
                 title="Error",
                 border_style="red"
             ))
+            log_crash(f"Unexpected error: {str(e)}")
             pause_for_reading("Error — copy the message above", 15)
             console.print(Text("Recovery in progress — returning to main menu.", style=COL_WARN))
             pause_for_reading("Resuming", 15)
