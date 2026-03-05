@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crystalmedia"
+version = "4.0.0"
+description = "Cross-platform media downloader for YouTube and Spotify"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+  {name = "Thegamerprogrammer"}
+]
+dependencies = [
+  "yt-dlp[default,curl-cffi]",
+  "spotdl",
+  "rich",
+  "pyfiglet",
+  "pywebview"
+]
+keywords = ["youtube", "spotify", "downloader", "cli", "yt-dlp"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Environment :: Console",
+  "Operating System :: OS Independent",
+  "Topic :: Multimedia :: Video",
+]
+
+[project.urls]
+Homepage = "https://github.com/Thegamerprogrammer/CrystalMedia"
+Repository = "https://github.com/Thegamerprogrammer/CrystalMedia"
+
+[project.scripts]
+crystalmedia = "crystalmedia.cli:main"
+crystalmedia-gui = "crystalmedia.gui:launch_gui"
+
+[tool.setuptools]
+include-package-data = true
+py-modules = ["CrystalMedia"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["crystalmedia*"]
+
+[tool.setuptools.package-data]
+crystalmedia = ["vendor/exportify/*", "webui/*"]
