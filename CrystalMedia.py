@@ -516,7 +516,7 @@ create_folders()
 
 class FixedProgressLogger:
     """Fixed progress bar + scrolling log panel using Rich Layout"""
-    def __init__(self, console_obj, header_text: Text):
+    def __init__(self, console_obj, header_text: Text = None):
         self.console = console_obj
         self.logs = []
         self.layout = Layout()
@@ -525,10 +525,10 @@ class FixedProgressLogger:
             Layout(name="logs", size=16)
         )
         self.progress = Progress(
-            SpinnerColumn(style=COL_MENU),
-            TextColumn("[progress.description]{task.description}", style=COL_MENU),
-            BarColumn(complete_style=COL_MENU, finished_style=COL_MENU, pulse_style=COL_MENU),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%", style=COL_MENU),
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             console=self.console
         )
         self.task = None
@@ -545,8 +545,6 @@ class FixedProgressLogger:
     def add_log(self, msg: str, level: str = "info"):
         """Add message to log panel with color coding"""
         msg = strip_ansi(msg).replace("\n", " ").strip()
-        if len(msg) > self.max_log_width:
-            msg = msg[:self.max_log_width - 1] + "…"
 
         if level == "error":
             style = "red"
@@ -572,8 +570,7 @@ class FixedProgressLogger:
         log_panel = Panel(
             log_text if self.logs else Text("Waiting for output...", style="dim"),
             title="Download Log",
-            border_style=COL_MENU,
-            title_align="left"
+            border_style="blue"
         )
         self.layout["logs"].update(log_panel)
 
@@ -582,8 +579,9 @@ class FixedProgressLogger:
         if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
+
         self.layout["progress"].update(
-            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
+            Panel(self.progress, title="Progress", border_style="green")
         )
 
     def mark_complete(self, description: str = "Download complete!"):
@@ -740,8 +738,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     runtime_preference = select_js_runtime_preference()
 
     # Initialize fixed progress logger
-    progress_header = build_download_header(title if "title" in locals() else "Unknown", mode, content_type, target_dir)
-    progress_logger = FixedProgressLogger(console, progress_header)
+    progress_logger = FixedProgressLogger(console)
     progress_logger.start()
     progress_logger.add_log(f"Starting {mode} {content_type.upper()} download", "info")
 
@@ -878,7 +875,6 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         if final_path:
             progress_logger.add_log(f"✓ Final file: {final_path}", "success")
         progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
-        progress_logger.wait_for_continue("Download success", 30)
         progress_logger.stop()
         if final_path:
             console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
