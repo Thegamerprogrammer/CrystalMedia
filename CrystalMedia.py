@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CrystalMedia Downloader – Stable Production Release v3.1.9
+CrystalMedia Downloader – Stable Production Release v4
 ==========================================================
 Cross-platform media downloader for YouTube & Spotify.
 YouTube: works like a beast
@@ -510,7 +510,7 @@ def display_full_splash():
     figlet = Figlet(font='slant')
     art = figlet.renderText('CrystalMedia')
     console.print(Text(art, style=COL_TITLE))
-    console.print(Text("v3.1.9", style=COL_ACC))
+    console.print(Text("v4", style=COL_ACC))
     console.print("-" * 60)
 
 def display_clean_splash():
