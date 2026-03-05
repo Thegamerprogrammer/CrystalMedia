@@ -898,28 +898,67 @@ def _spotify_oembed_query(url: str) -> str:
     return query
 
 
-def _spotify_page_queries(url: str, max_tracks: int = 30):
-    req = urllib.request.Request(url, headers={"User-Agent": random.choice(USER_AGENTS)})
-    with urllib.request.urlopen(req, timeout=25) as resp:
-        page = resp.read().decode("utf-8", errors="ignore")
+def _resolve_spotify_url(url: str) -> str:
+    """Follow Spotify share redirects and return canonical open.spotify URL when possible."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": random.choice(USER_AGENTS)})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            final_url = resp.geturl()
+        return final_url or url
+    except Exception:
+        return url
 
-    queries = []
 
-    # Strategy 1 (more stable): parse /track/<id> links and resolve via oEmbed.
+def _extract_track_ids_from_page(page: str, max_tracks: int = 30):
     track_ids = []
-    for pattern in [r'/track/([A-Za-z0-9]{22})', r'open\.spotify\.com/track/([A-Za-z0-9]{22})', r'spotify:track:([A-Za-z0-9]{22})']:
+
+    patterns = [
+        r'/track/([A-Za-z0-9]{22})',
+        r'open\.spotify\.com/track/([A-Za-z0-9]{22})',
+        r'spotify:track:([A-Za-z0-9]{22})',
+        r'spotify%3Atrack%3A([A-Za-z0-9]{22})',
+        r'"uri"\s*:\s*"spotify:track:([A-Za-z0-9]{22})"',
+        r'"entityUri"\s*:\s*"spotify:track:([A-Za-z0-9]{22})"',
+    ]
+    for pattern in patterns:
         for tid in re.findall(pattern, page):
             if tid not in track_ids:
                 track_ids.append(tid)
             if len(track_ids) >= max_tracks:
-                break
-        if len(track_ids) >= max_tracks:
-            break
+                return track_ids
+
+    next_data_match = re.search(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', page, flags=re.S)
+    if next_data_match:
+        payload_text = next_data_match.group(1)
+        for tid in re.findall(r'"spotify:track:([A-Za-z0-9]{22})"', payload_text):
+            if tid not in track_ids:
+                track_ids.append(tid)
+            if len(track_ids) >= max_tracks:
+                return track_ids
+
+    return track_ids
+
+
+def _spotify_page_queries(url: str, max_tracks: int = 30):
+    url = _resolve_spotify_url(url)
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://open.spotify.com/",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        page = resp.read().decode("utf-8", errors="ignore")
+
+    queries = []
+    track_ids = _extract_track_ids_from_page(page, max_tracks=max_tracks)
 
     for tid in track_ids:
         try:
             q = _spotify_oembed_query(f"https://open.spotify.com/track/{tid}")
-            if q:
+            if q and q not in queries:
                 queries.append(q)
         except Exception:
             continue
@@ -929,7 +968,7 @@ def _spotify_page_queries(url: str, max_tracks: int = 30):
     if queries:
         return queries
 
-    # Strategy 2 (fallback): row/label HTML parsing (brittle, but sometimes useful).
+    # Fallback: row/label HTML parsing.
     rows = re.findall(r'data-testid="track-row".*?(?=data-testid="track-row"|</body>)', page, flags=re.S)
     for row in rows:
         title_match = re.search(r'data-encore-id="listRowTitle"[^>]*>\s*<span[^>]*>(.*?)</span>', row, flags=re.S)
@@ -940,7 +979,9 @@ def _spotify_page_queries(url: str, max_tracks: int = 30):
         artist = html.unescape(re.sub(r'<[^>]+>', '', artist_match.group(1))).strip() if artist_match else ""
         if not title:
             continue
-        queries.append(f"{title} {artist}".strip())
+        query = f"{title} {artist}".strip()
+        if query and query not in queries:
+            queries.append(query)
         if len(queries) >= max_tracks:
             break
     return queries
@@ -1001,11 +1042,12 @@ def download_spotify(url: str, is_playlist: bool) -> None:
     progress_logger.add_log("Spotify downloader (no-premium fallback mode)", "info")
 
     queries = []
+    resolved_url = _resolve_spotify_url(url)
     try:
-        if is_playlist or "/playlist/" in url or "/album/" in url:
-            queries = _spotify_page_queries(url)
+        if is_playlist or "/playlist/" in resolved_url or "/album/" in resolved_url:
+            queries = _spotify_page_queries(resolved_url)
         else:
-            q = _spotify_oembed_query(url)
+            q = _spotify_oembed_query(resolved_url)
             if q:
                 queries = [q]
     except Exception as e:
