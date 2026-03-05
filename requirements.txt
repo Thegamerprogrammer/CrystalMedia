@@ -1,0 +1,6 @@
+yt-dlp[default,curl-cffi]
+spotdl
+rich
+pyfiglet
+
+pywebview

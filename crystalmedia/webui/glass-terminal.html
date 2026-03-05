@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CrystalMedia Glass Terminal</title>
+  <style>
+    :root { --bg:#070d1b; --fg:#dce9ff; --a:#b3e0ff; --line:#8ebeff66; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Segoe UI,Arial;background:
+      radial-gradient(circle at 15% 5%,#2d5fa544,transparent 30%),
+      radial-gradient(circle at 85% 20%,#5de0ff33,transparent 30%),
+      var(--bg);color:var(--fg)}
+    .app{max-width:1400px;margin:20px auto;padding:14px;display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:14px}
+    .glass{background:#ffffff10;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 35px #0008;padding:16px}
+    h1{margin:0 0 8px;color:#a5d8ff;text-shadow:0 0 16px #7dbdff77}
+    h2{margin:0 0 10px;color:var(--a)}
+    .dotcol::before{content:'⋮';display:block;text-align:right;font-size:26px;color:#a5d8ff;opacity:.9}
+    button{width:100%;margin:8px 0;padding:12px;border:1px solid #9bc8ff77;border-radius:10px;background:#13305ccc;color:#dce9ff;cursor:pointer;font-weight:600}
+    button:hover{filter:brightness(1.1)}
+    .log{height:74vh;background:#081125cc;border:1px solid #9bc8ff66;border-radius:10px;padding:10px;overflow:auto;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px}
+    .muted{opacity:.88}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="glass">
+      <h1>CrystalMedia v4</h1>
+      <p class="muted">Primary HTML GUI with Python backend service (no terminal required).</p>
+      <button onclick="autoInstall()">Ask + Auto-install dependencies</button>
+      <button onclick="startCli()">Run legacy terminal mode in background</button>
+    </section>
+
+    <section class="glass dotcol">
+      <h2>Status</h2>
+      <div id="status">Loading...</div>
+      <p class="muted">This column is reserved for quick diagnostics and actions.</p>
+    </section>
+
+    <section class="glass dotcol">
+      <h2>Logs</h2>
+      <div id="log" class="log">Initializing...</div>
+    </section>
+  </div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+
+    async function refresh() {
+      if (!window.pywebview) return;
+      try {
+        const logs = await window.pywebview.api.get_logs();
+        logEl.textContent = logs || 'No logs yet.';
+        logEl.scrollTop = logEl.scrollHeight;
+        const status = JSON.parse(await window.pywebview.api.get_status());
+        statusEl.innerHTML = `<b>Python:</b> ${status.python}<br><b>CWD:</b> ${status.cwd}`;
+      } catch (e) {}
+    }
+
+    async function autoInstall() {
+      const ok = confirm('Install/update dependencies now? This may take a few minutes.');
+      if (!ok) return;
+      await window.pywebview.api.auto_install_dependencies();
+      refresh();
+    }
+
+    async function startCli() {
+      await window.pywebview.api.launch_cli_background();
+      refresh();
+    }
+
+    setInterval(refresh, 1000);
+    refresh();
+  </script>
+</body>
+</html>
