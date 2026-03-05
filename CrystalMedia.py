@@ -911,9 +911,26 @@ def _playlist_name_from_url(url: str) -> str:
     return m.group(1) if m else "playlist"
 
 
+def _playlist_display_name_from_url(url: str) -> str:
+    """Prefer human playlist title from Spotify oEmbed; fallback to id slug."""
+    try:
+        req = urllib.request.Request(
+            f"https://open.spotify.com/oembed?url={url}",
+            headers={"User-Agent": random.choice(USER_AGENTS)},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        title = (payload.get("title") or "").strip()
+        if title:
+            return title
+    except Exception:
+        pass
+    return _playlist_name_from_url(url)
+
+
 def _find_exportify_csv(playlist_name: str):
     candidates = []
-    roots = [Path.cwd(), Path.home() / "Downloads"]
+    roots = [Path.cwd() / "csv"]
     needle = playlist_name.lower().strip()
     for root in roots:
         if not root.exists():
@@ -966,12 +983,21 @@ def _spotify_exportify_queries_interactive(url: str, wait_seconds: int = 180):
     except Exception:
         console.print(Text("Could not auto-open browser. Open https://watsonbox.github.io/exportify/ manually.", style=COL_WARN))
 
-    default_name = _playlist_name_from_url(url)
-    playlist_name = console.input(Text(f"Playlist name (for auto-detect) [{default_name}] → ", style=COL_ACC)).strip() or default_name
+    csv_dir = Path.cwd() / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    default_name = _playlist_display_name_from_url(url)
+    console.print(Text(f"CSV directory: {csv_dir.resolve()}", style=COL_MENU))
+    playlist_name = console.input(Text(f"Playlist name (auto from link) [{default_name}] → ", style=COL_ACC)).strip() or default_name
 
-    csv_input = console.input(Text("CSV path (Enter = auto-detect/poll) → ", style=COL_ACC)).strip()
+    csv_input = console.input(Text("CSV file path (inside ./csv, Enter = auto-detect/poll) → ", style=COL_ACC)).strip()
     if csv_input:
         csv_path = Path(csv_input).expanduser()
+        if not csv_path.is_absolute():
+            csv_path = (Path.cwd() / "csv" / csv_path).resolve()
+        allowed_root = (Path.cwd() / "csv").resolve()
+        if not str(csv_path).startswith(str(allowed_root)):
+            console.print(Text(f"CSV must be inside: {allowed_root}", style=COL_ERR))
+            return []
         if not csv_path.exists():
             console.print(Text(f"CSV not found: {csv_path}", style=COL_ERR))
             return []
