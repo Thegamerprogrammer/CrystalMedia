@@ -5,8 +5,7 @@ CrystalMedia Downloader – Stable Production Release v3.1.9
 ==========================================================
 Cross-platform media downloader for YouTube & Spotify.
 YouTube: works like a beast
-Spotify: currently non-functional (Feb 2026 dev mode killed shared creds)
-Refer: https://github.com/spotDL/spotify-downloader/issues/2617
+Spotify: fallback mode available (metadata + yt-dlp search pipeline)
 Author: Thegamerprogrammer
 License: MIT
 """
@@ -41,6 +40,17 @@ def strip_ansi(text: str) -> str:
 def command_exists(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
+
+def ask_add_to_path(path_value: str, reason: str):
+    print(f"\nAdd to PATH for {reason}?\n  {path_value}")
+    ans = input("Add now? [Y/n]: ").strip().lower()
+    if ans in ('', 'y', 'yes'):
+        os.environ["PATH"] += os.pathsep + path_value
+        log_runtime(f"PATH updated: {path_value}")
+        return True
+    log_runtime(f"PATH unchanged (user declined): {path_value}")
+    return False
+
 def ask_install(what: str) -> bool:
     print(f"\nCrystalMedia needs {what} to not be a broken toy.")
     ans = input("Install now? [Y/n]: ").strip().lower()
@@ -62,6 +72,7 @@ def run_shell_quiet(cmd: str):
         return False
 
 print("CrystalMedia performing dependency health check...")
+log_runtime("Dependency health check started.")
 
 # Windows: dynamic user Scripts PATH
 if platform.system() == "Windows":
@@ -75,15 +86,13 @@ if platform.system() == "Windows":
         user_scripts_str = os.path.expanduser(rf"~\AppData\Roaming\Python\{py_ver}\Scripts")
 
     if user_scripts_str not in os.environ["PATH"]:
-        os.environ["PATH"] += os.pathsep + user_scripts_str
-        print(f"Added real Windows user Scripts to PATH: {user_scripts_str}")
+        ask_add_to_path(user_scripts_str, "Windows Python user scripts")
 
 # Unix/macOS/Linux: add ~/.local/bin if missing
 elif platform.system() in ("Linux", "Darwin"):
     local_bin = os.path.expanduser("~/.local/bin")
     if local_bin not in os.environ.get("PATH", "").split(os.pathsep):
-        os.environ["PATH"] += os.pathsep + local_bin
-        print(f"Added ~/.local/bin to PATH for Unix/macOS compatibility")
+        ask_add_to_path(local_bin, "Unix/macOS local user binaries")
 
 # Deno
 if not command_exists("deno"):
@@ -110,6 +119,28 @@ if not command_exists("spotdl"):
         print("Installing spotdl...")
         run_quiet([sys.executable, "-m", "pip", "install", "--upgrade", "spotdl"])
 
+
+
+def available_js_runtimes():
+    runtimes = []
+    if command_exists("deno"):
+        runtimes.append("deno")
+    if command_exists("node"):
+        runtimes.append("node")
+    elif command_exists("nodejs"):
+        runtimes.append("nodejs")
+    return runtimes
+
+
+def refresh_js_runtimes():
+    """Attempt lightweight runtime update/health checks for yt-dlp JS challenges."""
+    if command_exists("deno"):
+        run_quiet(["deno", "upgrade"])
+    if command_exists("node"):
+        run_quiet(["node", "--version"])
+    elif command_exists("nodejs"):
+        run_quiet(["nodejs", "--version"])
+
 # rich + pyfiglet
 for pkg in ["rich", "pyfiglet"]:
     try:
@@ -120,6 +151,8 @@ for pkg in ["rich", "pyfiglet"]:
             run_quiet([sys.executable, "-m", "pip", "install", "--upgrade", pkg])
 
 print("Dependency health check completed. Importing libraries...\n")
+_append_file(DEPS_LOG, f"[{datetime.now().isoformat(timespec='seconds')}] deno={command_exists('deno')} node={command_exists('node') or command_exists('nodejs')} yt-dlp={command_exists('yt-dlp')} ffmpeg={command_exists('ffmpeg')} spotdl={command_exists('spotdl')}")
+log_runtime("Dependency health check completed.")
 
 # ──────────────────────────────────────────────
 # NOW import external libraries
@@ -162,6 +195,7 @@ for name, desc in libs:
     console.print(f" • [bold green]{name}[/bold green] → {desc}")
 
 console.print("")
+refresh_js_runtimes()
 
 # ──────────────────────────────────────────────
 # Clean Rich Live countdown INSIDE the yellow panel
@@ -264,19 +298,6 @@ def display_full_splash():
     console.print(Text(art, style=COL_TITLE))
     console.print(Text("v3.1.9", style=COL_ACC))
     console.print("-" * 60)
-    console.print(Panel(
-        Text(
-            "Spotify mode: NON-FUNCTIONAL (February 2026 Developer Mode update)\n"
-            "Shared credentials are rate-limited or rejected (403 / 86400s errors)\n"
-            "Refer: https://github.com/spotDL/spotify-downloader/issues/2617\n"
-            "Upgrade spotdl when resolved: pip install --upgrade spotdl",
-            justify="center",
-            style="bold red"
-        ),
-        title="Important Notice",
-        border_style="red"
-    ))
-    pause_for_reading("Reading warning", 15)
 
 def display_clean_splash():
     clear_screen()
@@ -293,7 +314,7 @@ def clear_screen():
 # Directory structure
 # ──────────────────────────────────────────────
 def create_folders():
-    base = Path("downloads")
+    base = DOWNLOADS_ROOT
     base.mkdir(exist_ok=True)
     for category in ["YT VIDEO", "YT MUSIC", "SPOTIFY"]:
         for subcategory in ["Single", "Playlist"]:
@@ -432,9 +453,9 @@ USER_AGENTS = [
 def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
     subfolder = "Playlist" if is_playlist else "Single"
     base_path = (
-        f"downloads/{'YT VIDEO' if content_type == 'video' else 'YT MUSIC'}/{subfolder}/%(playlist_title)s/%(title)s.%(ext)s"
+        str(DOWNLOADS_ROOT / ("YT VIDEO" if content_type == "video" else "YT MUSIC") / subfolder / "%(playlist_title)s" / "%(title)s.%(ext)s")
         if is_playlist else
-        f"downloads/{'YT VIDEO' if content_type == 'video' else 'YT MUSIC'}/{subfolder}/%(title)s.%(ext)s"
+        str(DOWNLOADS_ROOT / ("YT VIDEO" if content_type == "video" else "YT MUSIC") / subfolder / "%(title)s.%(ext)s")
     )
     options = {
         "outtmpl": base_path,
@@ -449,6 +470,7 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         "http_headers": {"User-Agent": random.choice(USER_AGENTS)},
         "remux_video": "mp4",
         "format_sort": ["ext:mp4:m4a"],
+        "js_runtimes": available_js_runtimes(),
     }
     if is_playlist:
         options.update({"sleep_requests": 2, "sleep_interval": 5, "max_sleep_interval": 15})
@@ -498,7 +520,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         console.print(Text("Could not extract title — downloading anyway...", style=COL_WARN))
 
     subfolder = "Playlist" if is_playlist else "Single"
-    target_dir = Path("downloads") / ("YT VIDEO" if content_type == "video" else "YT MUSIC") / subfolder
+    target_dir = DOWNLOADS_ROOT / ("YT VIDEO" if content_type == "video" else "YT MUSIC") / subfolder
     target_dir.mkdir(parents=True, exist_ok=True)
 
     mode = "Playlist" if is_playlist else "Single Item"
@@ -670,7 +692,7 @@ def _download_spotify_queries_with_ytdlp(queries, target_dir: Path):
 
 def download_spotify(url: str, is_playlist: bool) -> None:
     subfolder = "Playlist" if is_playlist else "Single"
-    target_dir = Path("downloads/SPOTIFY") / subfolder
+    target_dir = DOWNLOADS_ROOT / "SPOTIFY" / subfolder
     target_dir.mkdir(parents=True, exist_ok=True)
 
     console.print(Text("Spotify downloader (no-premium fallback mode)", style=COL_ACC))
@@ -701,10 +723,16 @@ def download_spotify(url: str, is_playlist: bool) -> None:
         spotdl_client = Spotdl()
         songs = spotdl_client.search([url])
         results = spotdl_client.download_songs(songs)
+        progress_logger.mark_complete(f"Downloaded {len(results)} track(s)!")
+        progress_logger.add_log(f"✓ Downloaded {len(results)} track(s) → {target_dir}", "success")
+        progress_logger.wait_for_continue("Spotify download success", 30)
+        progress_logger.stop()
         console.print(Text(f"Downloaded {len(results)} track(s) → {target_dir}", style=COL_GOOD))
         pause_for_reading("Spotify download finished — review above", 30)
     except Exception as e:
+        progress_logger.stop()
         console.print(Text(f"Spotify download failed: {str(e)}", style=COL_ERR))
+        log_crash(f"Spotify download failed: {str(e)}")
         pause_for_reading("Error — copy the message above", 15)
 
 
@@ -750,7 +778,7 @@ def read_key():
 # Primary application loop
 # ──────────────────────────────────────────────
 def main_loop():
-    categories = ["YouTube Video (MP4)", "YouTube Music (MP3)", "Spotify (Broken)", "Exit"]
+    categories = ["YouTube Video (MP4)", "YouTube Music (MP3)", "Spotify", "Exit"]
     selected_index = 0
 
     # FIX: Clear any leftover keypresses from the library countdown
@@ -807,20 +835,6 @@ def main_loop():
                 elif category_choice == "2":
                     download_youtube(url_input, "audio", is_playlist)
                 elif category_choice == "3":
-                    display_clean_splash()
-                    console.print(Panel(
-                        Text(
-                            "Spotify mode is non-functional due to February 2026 Developer Mode update.\n"
-                            "Shared credentials are rate-limited or rejected (403 / 86400s errors).\n"
-                            "Refer: https://github.com/spotDL/spotify-downloader/issues/2617\n"
-                            "Upgrade spotdl when resolved: pip install --upgrade spotdl",
-                            justify="center",
-                            style="bold red"
-                        ),
-                        title="Spotify Status",
-                        border_style="red"
-                    ))
-                    pause_for_reading("Spotify warning — review above", 15)
                     download_spotify(url_input, is_playlist)
 
                 console.input(Text("\nPress Enter to continue...", style=COL_ACC))
@@ -835,6 +849,7 @@ def main_loop():
                 title="Error",
                 border_style="red"
             ))
+            log_crash(f"Unexpected error: {str(e)}")
             pause_for_reading("Error — copy the message above", 15)
             console.print(Text("Recovery in progress — returning to main menu.", style=COL_WARN))
             pause_for_reading("Resuming", 15)
