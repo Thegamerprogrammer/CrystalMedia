@@ -74,8 +74,15 @@ When the app starts, the flow is designed to feel game-like and guided:
 - Single or playlist
 - Audio extraction postprocessing
 
-### 🎧 Spotify (Fallback Mode)
-Spotify links are handled with a resilient fallback: CrystalMedia derives track queries from Spotify metadata and downloads via `yt-dlp` search. If that path fails, it attempts legacy `spotdl` mode.
+### 🎧 Spotify (Exportify-first Playlist Mode)
+- **Single track**: reads Spotify metadata and downloads via `yt-dlp` search.
+- **Playlist/album**: **Exportify CSV is the primary path**.
+  1. Open your playlist URL in CrystalMedia.
+  2. CrystalMedia opens Exportify in browser.
+  3. Export playlist CSV and place it in `./csv` (next to `CrystalMedia.py`).
+  4. CrystalMedia reads that CSV and downloads each song via `yt-dlp` search.
+
+If no CSV is found, CrystalMedia attempts direct Spotify page scraping fallback.
 
 ---
 
@@ -145,3 +152,10 @@ Use responsibly and only with content you are authorized to download.
 ---
 
 PRs are welcome for UI polish, reliability improvements, and Spotify-mode recovery when upstream ecosystem changes stabilize.
+
+
+## 🧾 Exportify CSV (Playlist) Quick Notes
+
+- CSV files **must be in** `./csv` (relative to where you run `CrystalMedia.py`).
+- Leave filename blank in prompt to auto-detect latest matching CSV in `./csv`.
+- Playlist title is auto-derived from the Spotify playlist link and used for fuzzy CSV matching.
