@@ -142,6 +142,6 @@ Use responsibly and only with content you are authorized to download.
 
 ---
 
-## 🤝 Contributing
+---
 
 PRs are welcome for UI polish, reliability improvements, and Spotify-mode recovery when upstream ecosystem changes stabilize.
