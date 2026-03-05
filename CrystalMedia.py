@@ -47,15 +47,8 @@ def _ensure_app_layout():
 
 
 def install_exportify_vendor_requirements():
-    """Auto-install Python deps declared by vendor/exportify/requirements.txt."""
-    req_file = Path("vendor") / "exportify" / "requirements.txt"
-    if not req_file.exists():
-        return
-    print(f"Installing Exportify vendor requirements from {req_file}...")
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "-r", str(req_file)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        print("Exportify vendor requirements install failed; continuing startup.")
+    """Deprecated no-op for backwards compatibility (runtime installs removed)."""
+    return
 
 
 def _append_file(path: Path, line: str):
@@ -118,25 +111,20 @@ def _installed_python_package_version(package_name: str):
 
 
 def preflight_sync_python_tools():
-    """Check PyPI and proactively upgrade key Python tools before healing starts."""
-    package_map = {
-        "yt-dlp": "yt-dlp[default,curl-cffi]",
-        "spotdl": "spotdl",
-        "rich": "rich",
-        "pyfiglet": "pyfiglet",
-    }
-    print("\nCrystalMedia PyPI preflight: checking latest package versions...")
-    for pkg_name, pip_target in package_map.items():
+    """Check Python package availability/version status without installing at runtime."""
+    package_names = ["yt-dlp", "spotdl", "rich", "pyfiglet"]
+    print("\nCrystalMedia PyPI preflight: checking package status (no runtime installs)...")
+    for pkg_name in package_names:
         installed = _installed_python_package_version(pkg_name)
         latest = _fetch_pypi_version(pkg_name)
-        if latest is None:
-            print(f" - {pkg_name}: could not query PyPI; attempting upgrade anyway.")
-            subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", pip_target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if installed is None:
+            print(f" - {pkg_name}: not installed. Install via pip to enable full functionality.")
             continue
-
+        if latest is None:
+            print(f" - {pkg_name}: installed ({installed}); latest version unavailable.")
+            continue
         if installed != latest:
-            print(f" - {pkg_name}: {installed or 'not installed'} -> {latest}; upgrading...")
-            subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", pip_target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f" - {pkg_name}: installed {installed}, latest {latest} (update recommended).")
         else:
             print(f" - {pkg_name}: already latest ({latest}).")
 
@@ -272,46 +260,16 @@ elif platform.system() in ("Linux", "Darwin"):
 
 # Deno
 if not command_exists("deno"):
-    print("Deno missing — auto-installing...")
-    if platform.system() == "Windows":
-        run_quiet(["powershell", "-Command", "irm https://deno.land/install.ps1 | iex"])
-    else:
-        run_shell_quiet("curl -fsSL https://deno.land/install.sh | sh")
-    if not command_exists("deno"):
-        print("Deno install failed. Go to https://deno.com manually.")
+    print("Deno missing. Install manually if yt-dlp JS challenges fail: https://deno.com")
 
-# Always try to upgrade Deno when available
-if command_exists("deno"):
-    run_quiet(["deno", "upgrade"])
-
-# Node.js (alternate JS runtime for yt-dlp challenge solving)
 if not (command_exists("node") or command_exists("nodejs")):
-    print("Node.js missing — auto-installing with OS-aware package manager...")
-    ok = install_node_runtime_os_aware()
-    if not ok:
-        print("Node.js install helper could not complete automatically.")
-        print("Install manually: https://nodejs.org/en/download")
+    print("Node.js missing. Install manually for best yt-dlp runtime fallback: https://nodejs.org/en/download")
 
-# Node.js (alternate JS runtime for yt-dlp challenge solving)
-if not (command_exists("node") or command_exists("nodejs")):
-    if ask_install("Node.js (fallback JavaScript runtime for yt-dlp)"):
-        print("Installing Node.js with OS-aware package manager...")
-        ok = install_node_runtime_os_aware()
-        if not ok:
-            print("Node.js install helper could not complete automatically.")
-            print("Install manually: https://nodejs.org/en/download")
-
-# yt-dlp
 if not command_exists("yt-dlp"):
-    if ask_install("yt-dlp"):
-        print("Installing yt-dlp...")
-        run_quiet([sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", "yt-dlp[default,curl-cffi]"])
+    print("yt-dlp missing. Install it with: pip install yt-dlp[default,curl-cffi]")
 
-# spotdl
 if not command_exists("spotdl"):
-    if ask_install("spotdl"):
-        print("Installing spotdl...")
-        run_quiet([sys.executable, "-m", "pip", "install", "--upgrade", "spotdl"])
+    print("spotdl missing (legacy fallback). Install with: pip install spotdl")
 
 
 
@@ -340,9 +298,7 @@ for pkg in ["rich", "pyfiglet"]:
     try:
         __import__(pkg.replace("-", "_"))
     except ImportError:
-        if ask_install(pkg):
-            print(f"Installing {pkg}...")
-            run_quiet([sys.executable, "-m", "pip", "install", "--upgrade", pkg])
+        print(f"Missing Python dependency: {pkg}. Install with: pip install {pkg}")
 
 print("Dependency health check completed. Importing libraries...\n")
 _append_file(DEPS_LOG, f"[{datetime.now().isoformat(timespec='seconds')}] deno={command_exists('deno')} node={command_exists('node') or command_exists('nodejs')} yt-dlp={command_exists('yt-dlp')} ffmpeg={command_exists('ffmpeg')} spotdl={command_exists('spotdl')} exportify_req={(Path('vendor') / 'exportify' / 'requirements.txt').exists()}")
@@ -494,12 +450,9 @@ def download_ffmpeg():
         console.print(Text(f"FFmpeg download failed: {str(e)}", style=COL_ERR))
         console.print(Text("Install manually (Linux/macOS: package manager, Windows: gyan.dev).", style=COL_WARN))
 
-# Check & download FFmpeg if needed
+# Check FFmpeg availability (no runtime install/download)
 if not command_exists("ffmpeg"):
-    if ask_install("FFmpeg (direct from gyan.dev)"):
-        download_ffmpeg()
-    else:
-        console.print(Text("FFmpeg skipped — audio/merging may break.", style=COL_WARN))
+    console.print(Text("FFmpeg missing — install it to enable audio extraction/remuxing.", style=COL_WARN))
 
 # ──────────────────────────────────────────────
 # Splash variants
@@ -1075,9 +1028,13 @@ def _looks_like_spotify_id(value: str) -> bool:
 
 
 def _open_exportify_helper_page(playlist_name: str, playlist_url: str):
-    helper_page = Path(__file__).parent / "vendor" / "exportify" / "index.html"
+    helper_candidates = [
+        Path(__file__).parent / "vendor" / "exportify" / "index.html",
+        Path(__file__).parent / "crystalmedia" / "vendor" / "exportify" / "index.html",
+    ]
+    helper_page = next((p for p in helper_candidates if p.exists()), None)
     csv_dir = (Path.cwd() / "csv").resolve()
-    if helper_page.exists():
+    if helper_page is not None:
         params = urllib.parse.urlencode({
             "playlist": playlist_name,
             "csv_dir": str(csv_dir),
