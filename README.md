@@ -42,28 +42,51 @@ On first launch, CrystalMedia runs a dependency preflight/status check and self-
 
 ## 🧪 Interactive README + Full Visual Walkthrough
 
-Before install, you can explore a clickable mini site + full visual flow:
+Before install, you can explore a modern clickable mini site + complete visual docs:
 
-- **Interactive README:** `docs/interactive-readme.html`
+- **Interactive README (glass UI):** `docs/interactive-readme.html`
 - **Pre-install demo:** `docs/interactive-demo.html`
-- **PyPI package page:** https://pypi.org/project/crystalmedia/
+- **PyPI page:** https://pypi.org/project/crystalmedia/
 
-> On Windows, double-click either HTML file in `docs\` to open it instantly.
+> On Windows, open `docs\interactive-readme.html` directly in your browser.
 
-### Full UI Walkthrough Screenshots
+### Full Screenshot Gallery (Setup + Functions + Troubleshooting)
 
-![01 Splash](docs/media/01-splash.svg)
-![02 Main Menu](docs/media/02-main-menu.svg)
-![03 YouTube Flow](docs/media/03-youtube-flow.svg)
-![04 Spotify Exportify](docs/media/04-spotify-exportify.svg)
-![05 Stuck Help](docs/media/05-stuck-help.svg)
-![06 Success](docs/media/06-success.svg)
+#### Setup
+![Setup Python](docs/media/07-setup-python.svg)
+![Setup PyPI Install](docs/media/08-setup-pip-install.svg)
+![Setup Source Install](docs/media/09-setup-source.svg)
 
-### What to do when stuck
+#### Core UI
+![Splash](docs/media/01-splash.svg)
+![Main Menu](docs/media/02-main-menu.svg)
+![Success](docs/media/06-success.svg)
 
-- **Age-restricted YouTube:** sign in to YouTube in your regular browser profile, then retry.
-- **Spotify playlist stuck waiting for CSV:** export playlist in Exportify and save `.csv` into `./csv`.
-- **Missing dependencies:** install with pip (`yt-dlp`, `rich`, `pyfiglet`, `spotdl`) and rerun.
+#### YouTube Functions
+![YouTube Flow](docs/media/03-youtube-flow.svg)
+![YouTube MP4 Quality](docs/media/10-youtube-mp4-quality.svg)
+![YouTube MP3 Bitrate](docs/media/11-youtube-mp3-bitrate.svg)
+
+#### Spotify Functions
+![Spotify Exportify](docs/media/04-spotify-exportify.svg)
+![Spotify Single](docs/media/12-spotify-single.svg)
+![Spotify Playlist CSV](docs/media/13-spotify-playlist-csv.svg)
+
+#### When You Get Stuck
+![Stuck Help](docs/media/05-stuck-help.svg)
+![Age Restricted Troubleshooting](docs/media/14-stuck-age-restricted.svg)
+![Missing Dependencies Troubleshooting](docs/media/15-stuck-missing-deps.svg)
+![Output and Logs](docs/media/16-output-structure.svg)
+
+### Video / GIF recommendation for release docs
+
+To publish real full-session recordings (menu navigation, mode selection, progress logs, and recovery flows), record with:
+
+- **OBS Studio** (long-form videos)
+- **ScreenToGif** (quick GIF walkthroughs)
+- **ShareX** (clip + GIF export)
+
+Then attach them to GitHub Releases and embed links in this README.
 
 ---
 

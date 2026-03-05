@@ -1,25 +1,96 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CrystalMedia Interactive README</title>
-<style>
-body{margin:0;font-family:Inter,Segoe UI,Arial;background:#0b1220;color:#d6e4ff}.wrap{max-width:1100px;margin:20px auto;padding:20px}
-.card{background:#111a2c;border:1px solid #8fb6ff66;border-radius:16px;padding:18px;margin-bottom:16px}
-h1{color:#a5d8ff}.tabs button{background:#1a2846;color:#d6e4ff;border:1px solid #8fb6ff66;padding:10px 12px;border-radius:10px;margin:4px;cursor:pointer}
-.tabs button.active{background:#b3e0ff;color:#001018}
-img{width:100%;border-radius:12px;border:1px solid #8fb6ff66}
-.badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#1a2846;border:1px solid #8fb6ff66;margin-right:8px}
-.kbd{border:1px solid #8fb6ff66;border-bottom-width:3px;border-radius:6px;padding:2px 6px;background:#0b1220}
-@keyframes glow{50%{box-shadow:0 0 28px #7cb8ff55}} .pulse{animation:glow 2s infinite}
-</style></head><body><div class="wrap">
-<div class="card pulse"><h1>CrystalMedia v4 — Interactive README</h1>
-<span class="badge">PyPI ready</span><span class="badge">CLI: crystalmedia</span><span class="badge">Spotify Exportify mode</span>
-<p>Walkthrough, troubleshooting, and visual flow in one place.</p></div>
-<div class="card"><div class="tabs" id="tabs"></div><img id="frame" src="media/01-splash.svg" alt="frame"></div>
-<div class="card"><h2>Quick controls</h2><p><span class="kbd">↑</span> <span class="kbd">↓</span> navigate · <span class="kbd">Enter</span> select · <span class="kbd">Ctrl</span>+<span class="kbd">C</span> safe interrupt</p>
-<h2>If stuck</h2><ul><li>Age-restricted YouTube: login to browser profile and retry.</li><li>Spotify playlist: export CSV to <code>./csv</code>.</li><li>Missing deps: install via pip, then rerun CLI.</li></ul></div>
-</div>
-<script>
-const frames=[
-['Splash','media/01-splash.svg'],['Main Menu','media/02-main-menu.svg'],['YouTube Flow','media/03-youtube-flow.svg'],['Spotify Exportify','media/04-spotify-exportify.svg'],['Stuck Help','media/05-stuck-help.svg'],['Success','media/06-success.svg']
-];
-const tabs=document.getElementById('tabs'); const img=document.getElementById('frame');
-frames.forEach((f,i)=>{const b=document.createElement('button'); b.textContent=f[0]; if(i===0)b.className='active'; b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); img.src=f[1];}; tabs.appendChild(b);});
-</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CrystalMedia v4 — Interactive README</title>
+  <style>
+    :root{--bg:#070d1b;--fg:#dce9ff;--acc:#b3e0ff;--acc2:#a5d8ff;--panel:#ffffff12;--line:#91c3ff77}
+    *{box-sizing:border-box} body{margin:0;color:var(--fg);font-family:Inter,Segoe UI,Arial;background:radial-gradient(circle at 10% 0%,#17325f55,transparent 30%),radial-gradient(circle at 90% 20%,#4fc3f744,transparent 35%),var(--bg)}
+    .container{max-width:1200px;margin:24px auto;padding:16px}
+    .glass{background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:18px;box-shadow:0 14px 40px #0008}
+    .hero{padding:20px 24px;margin-bottom:16px;position:relative;overflow:hidden}
+    .hero::after{content:'';position:absolute;inset:auto -60px -80px auto;width:260px;height:260px;background:#7cb8ff33;filter:blur(36px);border-radius:50%}
+    h1{margin:.1rem 0 .4rem;color:var(--acc2);text-shadow:0 0 18px #8dc8ff77}
+    h2{color:var(--acc);margin:0 0 10px}
+    p,li{line-height:1.55}
+    .badges span{display:inline-block;margin:0 8px 8px 0;padding:7px 10px;border-radius:999px;background:#102241aa;border:1px solid #9ecfff66}
+    .split{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+    .block{padding:16px}
+    .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+    .tabs button{border:1px solid #94c7ff66;background:#13284acc;color:#dce9ff;padding:9px 12px;border-radius:10px;cursor:pointer;transition:.2s}
+    .tabs button:hover{transform:translateY(-1px)} .tabs button.active{background:var(--acc);color:#021327}
+    .frame{width:100%;border-radius:12px;border:1px solid #9ecfff66}
+    .gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .gallery a{display:block;text-decoration:none;color:inherit}
+    .gallery img{width:100%;border-radius:12px;border:1px solid #9ecfff66}
+    .gallery small{display:block;opacity:.9;margin-top:6px}
+    .kbd{padding:2px 7px;border:1px solid #9ecfff66;border-bottom-width:3px;border-radius:6px;background:#0b1630}
+    .video-note{padding:12px;border-radius:12px;background:#0d1b36aa;border:1px solid #9ecfff66}
+    @media (max-width:960px){.split{grid-template-columns:1fr}.gallery{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="glass hero">
+      <h1>CrystalMedia v4 — Interactive README</h1>
+      <div class="badges"><span>PyPI CLI: <b>crystalmedia</b></span><span>Exportify Playlist Mode</span><span>Cookie Fallback + Live UI</span></div>
+      <p>A modern, visual walkthrough of setup, every major function, and recovery paths when you get stuck.</p>
+    </section>
+
+    <section class="split">
+      <article class="glass block">
+        <h2>Guided Flow Player</h2>
+        <div class="tabs" id="tabs"></div>
+        <img id="frame" class="frame" src="media/01-splash.svg" alt="CrystalMedia flow frame" />
+      </article>
+      <aside class="glass block">
+        <h2>Quick Controls</h2>
+        <p><span class="kbd">↑</span> <span class="kbd">↓</span> Navigate<br><span class="kbd">Enter</span> Select<br><span class="kbd">Ctrl</span>+<span class="kbd">C</span> Safe interrupt</p>
+        <h2>When Stuck</h2>
+        <ul>
+          <li>Age-restricted videos: log in to YouTube in your normal browser profile.</li>
+          <li>Playlist CSV wait: export with Exportify and save in <code>./csv</code>.</li>
+          <li>Missing deps: install via pip, then rerun the CLI.</li>
+        </ul>
+        <div class="video-note">
+          <b>Video/GIF capture tips</b>
+          <p>Use OBS, ShareX, or ScreenToGif on Windows to record full terminal walkthroughs and attach them to GitHub Releases + README.</p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="glass block" style="margin-top:16px">
+      <h2>Full Screenshot Gallery (Setup + UI + Functions + Troubleshooting)</h2>
+      <div class="gallery" id="gallery"></div>
+    </section>
+  </div>
+
+  <script>
+    const frames = [
+      ['Splash','media/01-splash.svg'],['Main Menu','media/02-main-menu.svg'],['YouTube Flow','media/03-youtube-flow.svg'],['Spotify Exportify','media/04-spotify-exportify.svg'],['Stuck Help','media/05-stuck-help.svg'],['Success','media/06-success.svg'],
+      ['Setup Python','media/07-setup-python.svg'],['PyPI Install','media/08-setup-pip-install.svg'],['Source Install','media/09-setup-source.svg'],['MP4 Quality','media/10-youtube-mp4-quality.svg'],['MP3 Bitrate','media/11-youtube-mp3-bitrate.svg'],['Spotify Single','media/12-spotify-single.svg'],['Spotify CSV','media/13-spotify-playlist-csv.svg'],['Age Restricted Help','media/14-stuck-age-restricted.svg'],['Missing Dependencies','media/15-stuck-missing-deps.svg'],['Output & Logs','media/16-output-structure.svg']
+    ];
+    const tabs = document.getElementById('tabs');
+    const frame = document.getElementById('frame');
+    const gallery = document.getElementById('gallery');
+
+    frames.forEach((item, i) => {
+      const [name, src] = item;
+      const btn = document.createElement('button');
+      btn.textContent = name;
+      if (i === 0) btn.classList.add('active');
+      btn.onclick = () => {
+        document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
+        btn.classList.add('active');
+        frame.src = src;
+      };
+      tabs.appendChild(btn);
+
+      const a = document.createElement('a'); a.href = src; a.target = '_blank';
+      a.innerHTML = `<img src="${src}" alt="${name}"><small>${name}</small>`;
+      gallery.appendChild(a);
+    });
+  </script>
+</body>
+</html>
