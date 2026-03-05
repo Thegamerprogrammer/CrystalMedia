@@ -1,6 +1,6 @@
 # 💎 CrystalMedia
 
-> **A hyper-interactive terminal downloader for YouTube MP4/MP3 with a live Rich UI.**
+> **A glassmorphism HTML GUI downloader backed by Python for YouTube MP4/MP3 + Spotify workflows.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen)](#-requirements)
@@ -26,9 +26,13 @@
 ```bash
 # From PyPI (recommended)
 pip install crystalmedia
+
+# Default = HTML GUI (pywebview)
 crystalmedia
-# Launch glass GUI (pywebview)
+# Optional explicit GUI command
 crystalmedia-gui
+# Optional legacy terminal mode
+crystalmedia-terminal
 
 # From source
 git clone https://github.com/Thegamerprogrammer/CrystalMedia.git
@@ -45,9 +49,9 @@ On first launch, CrystalMedia runs a dependency preflight/status check and self-
 
 ## 🧊 Glass GUI (PyWebView)
 
-CrystalMedia now includes a **glassmorphism GUI shell** powered by `pywebview`:
+CrystalMedia now runs as a **glassmorphism HTML GUI** powered by `pywebview` (default mode):
 
-- Launch with: `crystalmedia-gui`
+- Launch with: `crystalmedia` (or `crystalmedia-gui`)
 - Uses a 3-column layout (actions / status / dotted logs column)
 - Can ask for dependency auto-install from the GUI and stream install logs live
 - Can run the classic CLI flow in a background process while logs stream to the GUI panel

@@ -60,11 +60,11 @@ class GuiBackend:
         return "done"
 
     def launch_cli_background(self) -> str:
-        """Run the existing terminal CLI in the background and stream output."""
+        """Run legacy terminal mode in the background and stream output."""
 
         def _runner() -> None:
             self._log("Starting CrystalMedia CLI in background...")
-            cmd = [sys.executable, "-m", "crystalmedia"]
+            cmd = ["crystalmedia-terminal"]
             try:
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 assert proc.stdout is not None

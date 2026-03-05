@@ -36,6 +36,7 @@ Repository = "https://github.com/Thegamerprogrammer/CrystalMedia"
 [project.scripts]
 crystalmedia = "crystalmedia.cli:main"
 crystalmedia-gui = "crystalmedia.gui:launch_gui"
+crystalmedia-terminal = "crystalmedia.cli:terminal_main"
 
 [tool.setuptools]
 include-package-data = true
