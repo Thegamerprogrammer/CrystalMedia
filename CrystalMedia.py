@@ -24,8 +24,11 @@ from pathlib import Path
 import zipfile
 import tarfile
 import urllib.request
+import urllib.parse
 import html
 import json
+import csv
+import webbrowser
 from datetime import datetime
 from importlib.metadata import version as pkg_version, PackageNotFoundError
 
@@ -502,10 +505,16 @@ def clear_screen():
 def create_folders():
     base = DOWNLOADS_ROOT
     base.mkdir(exist_ok=True)
+    created_paths = []
     for category in ["YT VIDEO", "YT MUSIC", "SPOTIFY"]:
         for subcategory in ["Single", "Playlist"]:
-            (base / category / subcategory).mkdir(parents=True, exist_ok=True)
+            path = (base / category / subcategory)
+            path.mkdir(parents=True, exist_ok=True)
+            created_paths.append(path)
     console.print(Text("Output directories initialised.", style=COL_GOOD))
+    console.print(Text(f"Base folder: {base.resolve()}", style=COL_MENU))
+    for path in created_paths:
+        console.print(Text(f" • {path.resolve()}", style=COL_MENU))
     pause_for_reading("Directories ready", 2)
 
 create_folders()
@@ -514,20 +523,6 @@ create_folders()
 # Fixed Progress Logger with Layout
 # ──────────────────────────────────────────────
 
-class ContinuePromptTooltip:
-    """Animated continue prompt rendered inside a tooltip panel."""
-    def __init__(self, message: str = "Download success", border_style: str = COL_WARN):
-        self.message = message
-        self.border_style = border_style
-        self.frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-
-    def render(self, remaining: int, frame_idx: int) -> Panel:
-        prompt = Text.assemble(
-            (f"{self.frames[frame_idx]} {self.message} {remaining}...\n", COL_ACC),
-            ("Press Enter or any key to continue", "italic dim")
-        )
-        return Panel(prompt, title="Timeout", border_style=self.border_style, title_align="left", padding=(0, 1))
-
 class FixedProgressLogger:
     """Fixed progress bar + scrolling log panel using Rich Layout"""
     def __init__(self, console_obj, header_text: Text):
@@ -535,12 +530,8 @@ class FixedProgressLogger:
         self.logs = []
         self.layout = Layout()
         self.layout.split_column(
-            Layout(name="header", size=10),
-            Layout(name="progress", size=6),
-            Layout(name="logs", size=10)
-        )
-        self.layout["header"].update(
-            Panel(header_text, border_style=COL_MENU, title="CrystalMedia", title_align="left")
+            Layout(name="progress", size=8),
+            Layout(name="logs", size=16)
         )
         self.progress = Progress(
             SpinnerColumn(style=COL_MENU),
@@ -550,11 +541,10 @@ class FixedProgressLogger:
             console=self.console
         )
         self.task = None
-        self.live = Live(self.layout, console=self.console, refresh_per_second=4, vertical_overflow="crop", screen=True)
-        self.max_logs = 8
+        self.live = Live(self.layout, console=self.console, refresh_per_second=4)
+        self.max_logs = 12
         self.max_log_width = 110
         self.layout["progress"].update(self._waiting_panel())
-        self.continue_tooltip = ContinuePromptTooltip()
 
     def _waiting_panel(self):
         """Render spinner placeholder until progress data arrives."""
@@ -568,24 +558,24 @@ class FixedProgressLogger:
             msg = msg[:self.max_log_width - 1] + "…"
 
         if level == "error":
-            styled_msg = f"[red]{msg}[/red]"
+            style = "red"
         elif level == "warning":
-            styled_msg = f"[yellow]{msg}[/yellow]"
+            style = "yellow"
         elif level == "success":
-            styled_msg = f"[green]{msg}[/green]"
+            style = "green"
         else:
-            styled_msg = f"[{COL_MENU}]{msg}[/{COL_MENU}]"
+            style = COL_MENU
 
-        self.logs.append(Text.from_markup(styled_msg))
+        self.logs.append(Text(msg, style=style))
         log_runtime(f"[{level.upper()}] {msg}")
         if level in ("error", "warning"):
             log_crash(msg)
-        if len(self.logs) > self.max_logs:
-            self.logs = self.logs[-self.max_logs:]
+        if len(self.logs) > 15:
+            self.logs = self.logs[-15:]
 
         log_text = Text()
         for log_entry in self.logs:
-            log_text.append(log_entry)
+            log_text.append_text(log_entry)
             log_text.append("\n")
 
         log_panel = Panel(
@@ -597,6 +587,7 @@ class FixedProgressLogger:
         self.layout["logs"].update(log_panel)
 
     def update_progress(self, percent: float, description: str = "Downloading"):
+        """Update progress bar"""
         if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
@@ -605,39 +596,14 @@ class FixedProgressLogger:
         )
 
     def mark_complete(self, description: str = "Download complete!"):
-        complete_text = Text(f"✓ {description}", style=COL_GOOD)
+        """Show a completed progress state even when file already exists."""
+        if self.task is None:
+            self.task = self.progress.add_task(description, total=100, completed=100)
+        else:
+            self.progress.update(self.task, completed=100, description=description)
         self.layout["progress"].update(
-            Panel(complete_text, title="Progress", border_style=COL_GOOD, title_align="left")
+            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
-
-    def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
-        return self._wait_for_continue_impl(message, seconds)
-
-    def _wait_for_continue_impl(self, message: str = "Download success", seconds: int = 30):
-        """Show timeout prompt inside progress panel to avoid layout gaps."""
-        remaining = seconds
-        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        frame_idx = 0
-        while remaining > 0:
-            self.continue_tooltip.message = message
-            self.layout["progress"].update(self.continue_tooltip.render(remaining, frame_idx))
-            if platform.system() == "Windows":
-                import msvcrt
-                if msvcrt.kbhit():
-                    msvcrt.getch()
-                    break
-            else:
-                import select
-                try:
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        sys.stdin.read(1)
-                        break
-                except Exception:
-                    # Non-interactive stdin in some environments; just continue countdown
-                    pass
-            time.sleep(1)
-            remaining -= 1
-            frame_idx = (frame_idx + 1) % len(frames)
 
     def start(self):
         self.live.start()
@@ -645,41 +611,8 @@ class FixedProgressLogger:
     def stop(self):
         self.live.stop()
 
-
-def show_inline_continue_prompt(progress_logger, message: str = "Download success", seconds: int = 30):
-    """Compatibility wrapper so post-download prompt never crashes on missing method."""
-    wait_fn = getattr(progress_logger, "wait_for_continue", None)
-    if callable(wait_fn):
-        wait_fn(message, seconds)
-        return
-
-    # Fallback path for stale runtime objects/classes.
-    with Live(console=console, refresh_per_second=4, transient=True) as live:
-        remaining = seconds
-        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        frame_idx = 0
-        while remaining > 0:
-            content = Text.assemble(
-                (f"{frames[frame_idx]} {message} {remaining}...\n", COL_ACC),
-                ("Press Enter or any key to continue", "italic dim")
-            )
-            live.update(Panel(content, title="Timeout", border_style=COL_WARN, padding=(0, 1)))
-            if platform.system() == "Windows":
-                import msvcrt
-                if msvcrt.kbhit():
-                    msvcrt.getch()
-                    break
-            else:
-                import select
-                try:
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        sys.stdin.read(1)
-                        break
-                except Exception:
-                    pass
-            time.sleep(1)
-            remaining -= 1
-            frame_idx = (frame_idx + 1) % len(frames)
+    def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
+        pause_for_reading(message, seconds)
 
 
 def build_download_header(title: str, mode: str, content_type: str, target_dir: Path) -> Text:
@@ -722,7 +655,6 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         "http_headers": {"User-Agent": random.choice(USER_AGENTS)},
         "remux_video": "mp4",
         "format_sort": ["ext:mp4:m4a"],
-        "js_runtimes": available_js_runtimes(),
     }
     if is_playlist:
         options.update({"sleep_requests": 2, "sleep_interval": 5, "max_sleep_interval": 15})
@@ -773,7 +705,7 @@ def select_js_runtime_preference() -> str:
 def build_js_runtime_profiles(preference: str):
     installed = available_js_runtimes()
     if not installed:
-        return [[]]
+        return [None]
     deno_first = [["deno"], ["node"], ["nodejs"], ["deno", "node"], ["node", "deno"]]
     node_first = [["node"], ["nodejs"], ["deno"], ["node", "deno"], ["deno", "node"]]
     auto_order = [["node"], ["nodejs"], ["deno"], ["node", "deno"], ["deno", "node"]]
@@ -785,6 +717,13 @@ def build_js_runtime_profiles(preference: str):
         if filtered and filtered not in profiles:
             profiles.append(filtered)
     return profiles or [installed]
+
+
+def to_js_runtime_option(runtime_list):
+    """yt-dlp expects a dict mapping runtime->config for js_runtimes."""
+    if not runtime_list:
+        return None
+    return {runtime: {} for runtime in runtime_list}
 
 def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     try:
@@ -803,8 +742,11 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
 
     mode = "Playlist" if is_playlist else "Single Item"
+    console.print(Text(f"Initiating {mode} {content_type.upper()} download → {target_dir}", style=COL_ACC))
 
     options = get_ydl_options(is_playlist, content_type)
+
+    runtime_preference = select_js_runtime_preference()
 
     # Initialize fixed progress logger
     progress_header = build_download_header(title if "title" in locals() else "Unknown", mode, content_type, target_dir)
@@ -838,7 +780,10 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 self.logger.add_log(clean_msg, level)
 
         def debug(self, msg):
-            self._handle_message(msg, "info")
+            if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
+                if 'ETA' in msg or '%' in msg:
+                    return
+                self.logger.add_log(strip_ansi(msg), "info")
 
         def info(self, msg):
             self._handle_message(msg, "info")
@@ -871,12 +816,15 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     final_path = None
     download_completed = False
 
-    runtime_preference = select_js_runtime_preference()
     runtime_profiles = build_js_runtime_profiles(runtime_preference)
 
     for runtime_try, runtime_list in enumerate(runtime_profiles, start=1):
-        runtime_value = ",".join(runtime_list)
-        options["js_runtimes"] = runtime_list
+        runtime_value = ",".join(runtime_list) if runtime_list else "default"
+        js_runtime_option = to_js_runtime_option(runtime_list)
+        if js_runtime_option is None:
+            options.pop("js_runtimes", None)
+        else:
+            options["js_runtimes"] = js_runtime_option
         progress_logger.add_log(f"JS runtime try {runtime_try}/{len(runtime_profiles)} → {runtime_value}", "info")
         console.print(Text(f"Trying JS runtime profile: {runtime_value}", style=COL_ACC))
 
@@ -945,6 +893,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
         else:
             console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
+        pause_for_reading("Download success — review above", 30)
         return
 
     progress_logger.add_log("Maximum retries reached", "error")
@@ -962,27 +911,214 @@ def _spotify_oembed_query(url: str) -> str:
     return query
 
 
+def _playlist_name_from_url(url: str) -> str:
+    m = re.search(r"/playlist/([A-Za-z0-9]+)", url)
+    return m.group(1) if m else "playlist"
+
+
+def _playlist_display_name_from_url(url: str) -> str:
+    """Prefer human playlist title from Spotify oEmbed; fallback to id slug."""
+    try:
+        req = urllib.request.Request(
+            f"https://open.spotify.com/oembed?url={url}",
+            headers={"User-Agent": random.choice(USER_AGENTS)},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        title = (payload.get("title") or "").strip()
+        if title:
+            return title
+    except Exception:
+        pass
+    return _playlist_name_from_url(url)
+
+
+def _normalize_playlist_name(value: str) -> str:
+    lowered = value.lower().strip()
+    cleaned = re.sub(r"[^a-z0-9]+", "", lowered)
+    return cleaned
+
+
+def _open_exportify_helper_page(playlist_name: str, playlist_url: str):
+    helper_page = Path(__file__).parent / "vendor" / "exportify" / "index.html"
+    csv_dir = (Path.cwd() / "csv").resolve()
+    if helper_page.exists():
+        params = urllib.parse.urlencode({
+            "playlist": playlist_name,
+            "csv_dir": str(csv_dir),
+            "playlist_url": playlist_url,
+        })
+        webbrowser.open(helper_page.resolve().as_uri() + "?" + params)
+    else:
+        webbrowser.open("https://watsonbox.github.io/exportify/")
+
+
+def _csv_matches_playlist_name(csv_path: Path, playlist_name: str) -> bool:
+    needle = _normalize_playlist_name(playlist_name)
+    if not needle:
+        return True
+    return needle in _normalize_playlist_name(csv_path.stem)
+
+
+def _find_exportify_csv(playlist_name: str):
+    csv_root = Path.cwd() / "csv"
+    if not csv_root.exists():
+        return None
+
+    files = [p for p in csv_root.glob("*.csv") if p.is_file()]
+    if not files:
+        return None
+
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    needle = _normalize_playlist_name(playlist_name)
+    if needle:
+        for path in files:
+            if needle in _normalize_playlist_name(path.stem):
+                return path
+
+    # If no name match, return newest so caller can explicitly validate and report.
+    return files[0]
+
+
+def _queries_from_exportify_csv(csv_path: Path, max_tracks: int = 300):
+    queries = []
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            title = (row.get("Track Name") or row.get("track_name") or "").strip()
+            artists = (row.get("Artist Name(s)") or row.get("artist_names") or row.get("Artist Name") or "").strip()
+            if title:
+                query = f"{title} {artists}".strip()
+                if query and query not in queries:
+                    queries.append(query)
+            if len(queries) >= max_tracks:
+                break
+    return queries
+
+
+def _spotify_exportify_queries_interactive(url: str, wait_seconds: int = 180):
+    console.print(Text("Spotify playlist helper (Exportify CSV)", style=COL_TITLE))
+    console.print(Text("Exportify is the primary metadata source for Spotify playlists.", style=COL_MENU))
+    console.print(Text("1) Login/auth at Exportify in your browser", style=COL_MENU))
+    console.print(Text("2) Export your playlist to CSV", style=COL_MENU))
+    console.print(Text("3) Save CSV into ./csv, then continue", style=COL_MENU))
+
+    csv_dir = Path.cwd() / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+
+    default_name = _playlist_display_name_from_url(url)
+    console.print(Text(f"Playlist from link: {default_name}", style=COL_ACC))
+    console.print(Text(f"CSV directory: {csv_dir.resolve()}", style=COL_MENU))
+
+    try:
+        _open_exportify_helper_page(default_name, url)
+    except Exception:
+        console.print(Text("Could not auto-open helper page. Open vendor/exportify/index.html manually.", style=COL_WARN))
+
+    csv_input = console.input(Text("CSV filename in ./csv (Enter = auto-detect latest) → ", style=COL_ACC)).strip()
+    if csv_input:
+        csv_path = (csv_dir / csv_input).resolve()
+        if not str(csv_path).startswith(str(csv_dir.resolve())):
+            console.print(Text(f"CSV must be inside: {csv_dir.resolve()}", style=COL_ERR))
+            return []
+        if not csv_path.exists():
+            console.print(Text(f"CSV not found: {csv_path}", style=COL_ERR))
+            return []
+        if not _csv_matches_playlist_name(csv_path, default_name):
+            console.print(Text(f"CSV filename must match playlist name: {default_name}", style=COL_ERR))
+            return []
+        return _queries_from_exportify_csv(csv_path)
+
+    # No explicit filename: keep checking newest file until timeout.
+    remaining = max(wait_seconds, 10)
+    while remaining > 0:
+        guessed_csv = _find_exportify_csv(default_name)
+        if guessed_csv and guessed_csv.exists() and _csv_matches_playlist_name(guessed_csv, default_name):
+            console.print(Text(f"Detected Exportify CSV: {guessed_csv}", style=COL_GOOD))
+            try:
+                return _queries_from_exportify_csv(guessed_csv)
+            except Exception as e:
+                console.print(Text(f"Failed to parse CSV: {str(e)}", style=COL_ERR))
+                return []
+        if remaining % 10 == 0:
+            console.print(Text(f"Waiting for CSV in ./csv ... {remaining}s", style=COL_MENU))
+        time.sleep(1)
+        remaining -= 1
+
+    console.print(Text("Timed out waiting for CSV in ./csv.", style=COL_WARN))
+    return []
+
+
+def _resolve_spotify_url(url: str) -> str:
+    """Follow Spotify share redirects and return canonical open.spotify URL when possible."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": random.choice(USER_AGENTS)})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            final_url = resp.geturl()
+        return final_url or url
+    except Exception:
+        return url
+
+
+def _extract_track_ids_from_page(page: str, max_tracks: int = 30):
+    track_ids = []
+
+    patterns = [
+        r'/track/([A-Za-z0-9]{22})',
+        r'\/track\/([A-Za-z0-9]{22})',
+        r'open\.spotify\.com/track/([A-Za-z0-9]{22})',
+        r'spotify:track:([A-Za-z0-9]{22})',
+        r'spotify%3Atrack%3A([A-Za-z0-9]{22})',
+        r'spotify%253Atrack%253A([A-Za-z0-9]{22})',
+        r'"uri"\s*:\s*"spotify:track:([A-Za-z0-9]{22})"',
+        r'"entityUri"\s*:\s*"spotify:track:([A-Za-z0-9]{22})"',
+    ]
+    for pattern in patterns:
+        for tid in re.findall(pattern, page):
+            if tid not in track_ids:
+                track_ids.append(tid)
+            if len(track_ids) >= max_tracks:
+                return track_ids
+
+    next_data_match = re.search(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', page, flags=re.S)
+    if next_data_match:
+        payload_text = next_data_match.group(1)
+        for tid in re.findall(r'"spotify:track:([A-Za-z0-9]{22})"', payload_text):
+            if tid not in track_ids:
+                track_ids.append(tid)
+            if len(track_ids) >= max_tracks:
+                return track_ids
+
+    return track_ids
+
+
 def _spotify_page_queries(url: str, max_tracks: int = 30):
-    req = urllib.request.Request(url, headers={"User-Agent": random.choice(USER_AGENTS)})
+    url = _resolve_spotify_url(url)
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://open.spotify.com/",
+        },
+    )
     with urllib.request.urlopen(req, timeout=25) as resp:
         page = resp.read().decode("utf-8", errors="ignore")
 
     queries = []
+    track_ids = _extract_track_ids_from_page(page, max_tracks=max_tracks)
 
-    # Strategy 1 (more stable): parse /track/<id> links and resolve via oEmbed.
-    track_ids = []
-    for tid in re.findall(r'/track/([A-Za-z0-9]{22})', page):
-        if tid not in track_ids:
-            track_ids.append(tid)
-        if len(track_ids) >= max_tracks:
-            break
-
+    unresolved_track_ids = []
     for tid in track_ids:
         try:
             q = _spotify_oembed_query(f"https://open.spotify.com/track/{tid}")
-            if q:
+            if q and q not in queries:
                 queries.append(q)
+            else:
+                unresolved_track_ids.append(tid)
         except Exception:
+            unresolved_track_ids.append(tid)
             continue
         if len(queries) >= max_tracks:
             break
@@ -990,7 +1126,14 @@ def _spotify_page_queries(url: str, max_tracks: int = 30):
     if queries:
         return queries
 
-    # Strategy 2 (fallback): row/label HTML parsing (brittle, but sometimes useful).
+    # Last-resort fallback when IDs were found but oEmbed lookup is blocked/throttled.
+    for tid in unresolved_track_ids[:max_tracks]:
+        queries.append(f"https://open.spotify.com/track/{tid}")
+
+    if queries:
+        return queries
+
+    # Fallback: row/label HTML parsing.
     rows = re.findall(r'data-testid="track-row".*?(?=data-testid="track-row"|</body>)', page, flags=re.S)
     for row in rows:
         title_match = re.search(r'data-encore-id="listRowTitle"[^>]*>\s*<span[^>]*>(.*?)</span>', row, flags=re.S)
@@ -1001,7 +1144,9 @@ def _spotify_page_queries(url: str, max_tracks: int = 30):
         artist = html.unescape(re.sub(r'<[^>]+>', '', artist_match.group(1))).strip() if artist_match else ""
         if not title:
             continue
-        queries.append(f"{title} {artist}".strip())
+        query = f"{title} {artist}".strip()
+        if query and query not in queries:
+            queries.append(query)
         if len(queries) >= max_tracks:
             break
     return queries
@@ -1055,25 +1200,32 @@ def download_spotify(url: str, is_playlist: bool) -> None:
     target_dir = DOWNLOADS_ROOT / "SPOTIFY" / subfolder
     target_dir.mkdir(parents=True, exist_ok=True)
 
+    resolved_url = _resolve_spotify_url(url)
+    queries = []
+
+    try:
+        if is_playlist or "/playlist/" in resolved_url or "/album/" in resolved_url:
+            # Exportify is the primary path for playlist metadata.
+            queries = _spotify_exportify_queries_interactive(resolved_url)
+            if not queries:
+                console.print(Text("Exportify produced no tracks; trying direct Spotify scrape fallback...", style=COL_WARN))
+                queries = _spotify_page_queries(resolved_url)
+        else:
+            q = _spotify_oembed_query(resolved_url)
+            if q:
+                queries = [q]
+    except Exception as e:
+        console.print(Text(f"Metadata parsing fallback triggered: {str(e)[:120]}", style=COL_WARN))
+
     mode = "Playlist" if is_playlist else "Single Item"
     progress_header = build_download_header("Spotify fallback", mode, "audio", target_dir)
     progress_logger = FixedProgressLogger(console, progress_header)
     progress_logger.start()
     progress_logger.add_log("Spotify downloader (no-premium fallback mode)", "info")
 
-    queries = []
-    try:
-        if is_playlist or "/playlist/" in url or "/album/" in url:
-            queries = _spotify_page_queries(url)
-        else:
-            q = _spotify_oembed_query(url)
-            if q:
-                queries = [q]
-    except Exception as e:
-        progress_logger.add_log(f"Metadata parsing fallback triggered: {str(e)[:120]}", "warning")
-
     if queries:
         try:
+            progress_logger.add_log(f"Loaded {len(queries)} metadata query item(s)", "info")
             downloaded = _download_spotify_queries_with_ytdlp(queries, target_dir, progress_logger)
             progress_logger.mark_complete(f"Downloaded {downloaded} track(s)!")
             progress_logger.add_log(f"✓ Downloaded {downloaded} track(s) → {target_dir}", "success")
@@ -1084,26 +1236,30 @@ def download_spotify(url: str, is_playlist: bool) -> None:
         except Exception as e:
             progress_logger.add_log(f"yt-dlp Spotify fallback failed: {str(e)}", "error")
 
-    progress_logger.add_log("Trying spotdl legacy mode as last fallback...", "warning")
-    try:
-        spotdl_client = Spotdl()
-        songs = spotdl_client.search([url])
-        results = spotdl_client.download_songs(songs)
-        progress_logger.mark_complete(f"Downloaded {len(results)} track(s)!")
-        progress_logger.add_log(f"✓ Downloaded {len(results)} track(s) → {target_dir}", "success")
-        progress_logger.wait_for_continue("Spotify download success", 30)
-        progress_logger.stop()
-        console.print(Text(f"Downloaded {len(results)} track(s) → {target_dir}", style=COL_GOOD))
-    except Exception as e:
-        progress_logger.stop()
-        console.print(Text(f"Spotify download failed: {str(e)}", style=COL_ERR))
-        log_crash(f"Spotify download failed: {str(e)}")
-        pause_for_reading("Error — copy the message above", 15)
+    progress_logger.add_log("Could not parse playable track list from Spotify URL.", "error")
+    progress_logger.add_log("Export playlist from https://watsonbox.github.io/exportify/ and retry with CSV.", "warning")
+    progress_logger.stop()
+    console.print(Text("Spotify metadata parsing failed for this URL. Export CSV via Exportify and retry.", style=COL_ERR))
+    pause_for_reading("Spotify metadata parse failed — review above", 15)
 
 
 # ──────────────────────────────────────────────
 # Cross-platform arrow-key menu navigation
 # ──────────────────────────────────────────────
+def drain_pending_input():
+    if platform.system() == "Windows":
+        import msvcrt
+        while msvcrt.kbhit():
+            msvcrt.getch()
+    else:
+        import select
+        try:
+            while select.select([sys.stdin], [], [], 0)[0]:
+                sys.stdin.read(1)
+        except Exception:
+            pass
+
+
 def read_key():
     """Cross-platform arrow key / Enter detection."""
     if platform.system() == "Windows":
@@ -1148,17 +1304,8 @@ def main_loop():
     categories = ["YouTube Video (MP4)", "YouTube Music (MP3)", "Spotify", "Exit"]
     selected_index = 0
 
-    # FIX: Clear any leftover keypresses from the library countdown
-    # so they don't accidentally skip the Spotify warning pause
-    if platform.system() == "Windows":
-        import msvcrt
-        while msvcrt.kbhit():
-            msvcrt.getch()  # drain any pending keys
-    else:
-        import select
-        if sys.stdin.isatty():
-            while select.select([sys.stdin], [], [], 0)[0]:
-                sys.stdin.read(1)
+    # FIX: Clear any leftover keypresses from previous flows/countdowns
+    drain_pending_input()
 
     # Now safe to show the splash (Spotify warning won't be skipped)
     display_full_splash()
@@ -1211,6 +1358,8 @@ def main_loop():
             console.print()
             console.print(Text("Keyboard interrupt detected. Returning to main menu.", style=COL_WARN))
             pause_for_reading("Interrupt acknowledged", 15)
+            drain_pending_input()
+            display_full_splash()
         except Exception as e:
             console.print(Panel(
                 Text(f"Unexpected error: {str(e)}", style="bold red"),
