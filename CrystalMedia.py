@@ -517,7 +517,7 @@ def display_clean_splash():
     figlet = Figlet(font='slant')
     art = figlet.renderText('CrystalMedia')
     console.print(Text(art, style=COL_TITLE))
-    console.print(Text("v3.1.9", style=COL_ACC))
+    console.print(Text("v4", style=COL_ACC))
     console.print("-" * 60)
 
 def clear_screen():
@@ -642,7 +642,7 @@ def build_download_header(title: str, mode: str, content_type: str, target_dir: 
     art = figlet.renderText('CrystalMedia')
     return Text.assemble(
         (art, COL_TITLE),
-        ("v3.1.9\n", COL_ACC),
+        ("v4\n", COL_ACC),
         (("-" * 60) + "\n", COL_MENU),
         (f"Downloading: {title}\n", COL_ACC),
         (f"Initiating {mode} {content_type.upper()} download → {target_dir}", COL_MENU),
