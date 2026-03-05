@@ -24,6 +24,7 @@ from pathlib import Path
 import zipfile
 import tarfile
 import urllib.request
+import urllib.parse
 import html
 import json
 import csv
@@ -934,6 +935,27 @@ def _normalize_playlist_name(value: str) -> str:
     return cleaned
 
 
+def _open_exportify_helper_page(playlist_name: str, playlist_url: str):
+    helper_page = Path(__file__).parent / "vendor" / "exportify" / "index.html"
+    csv_dir = (Path.cwd() / "csv").resolve()
+    if helper_page.exists():
+        params = urllib.parse.urlencode({
+            "playlist": playlist_name,
+            "csv_dir": str(csv_dir),
+            "playlist_url": playlist_url,
+        })
+        webbrowser.open(helper_page.resolve().as_uri() + "?" + params)
+    else:
+        webbrowser.open("https://watsonbox.github.io/exportify/")
+
+
+def _csv_matches_playlist_name(csv_path: Path, playlist_name: str) -> bool:
+    needle = _normalize_playlist_name(playlist_name)
+    if not needle:
+        return True
+    return needle in _normalize_playlist_name(csv_path.stem)
+
+
 def _find_exportify_csv(playlist_name: str):
     csv_root = Path.cwd() / "csv"
     if not csv_root.exists():
@@ -951,7 +973,7 @@ def _find_exportify_csv(playlist_name: str):
             if needle in _normalize_playlist_name(path.stem):
                 return path
 
-    # fallback: newest CSV in ./csv
+    # If no name match, return newest so caller can explicitly validate and report.
     return files[0]
 
 
@@ -986,9 +1008,9 @@ def _spotify_exportify_queries_interactive(url: str, wait_seconds: int = 180):
     console.print(Text(f"CSV directory: {csv_dir.resolve()}", style=COL_MENU))
 
     try:
-        webbrowser.open("https://watsonbox.github.io/exportify/")
+        _open_exportify_helper_page(default_name, url)
     except Exception:
-        console.print(Text("Could not auto-open browser. Open https://watsonbox.github.io/exportify/ manually.", style=COL_WARN))
+        console.print(Text("Could not auto-open helper page. Open vendor/exportify/index.html manually.", style=COL_WARN))
 
     csv_input = console.input(Text("CSV filename in ./csv (Enter = auto-detect latest) → ", style=COL_ACC)).strip()
     if csv_input:
@@ -999,13 +1021,16 @@ def _spotify_exportify_queries_interactive(url: str, wait_seconds: int = 180):
         if not csv_path.exists():
             console.print(Text(f"CSV not found: {csv_path}", style=COL_ERR))
             return []
+        if not _csv_matches_playlist_name(csv_path, default_name):
+            console.print(Text(f"CSV filename must match playlist name: {default_name}", style=COL_ERR))
+            return []
         return _queries_from_exportify_csv(csv_path)
 
     # No explicit filename: keep checking newest file until timeout.
     remaining = max(wait_seconds, 10)
     while remaining > 0:
         guessed_csv = _find_exportify_csv(default_name)
-        if guessed_csv and guessed_csv.exists():
+        if guessed_csv and guessed_csv.exists() and _csv_matches_playlist_name(guessed_csv, default_name):
             console.print(Text(f"Detected Exportify CSV: {guessed_csv}", style=COL_GOOD))
             try:
                 return _queries_from_exportify_csv(guessed_csv)
@@ -1217,6 +1242,20 @@ def download_spotify(url: str, is_playlist: bool) -> None:
 # ──────────────────────────────────────────────
 # Cross-platform arrow-key menu navigation
 # ──────────────────────────────────────────────
+def drain_pending_input():
+    if platform.system() == "Windows":
+        import msvcrt
+        while msvcrt.kbhit():
+            msvcrt.getch()
+    else:
+        import select
+        try:
+            while select.select([sys.stdin], [], [], 0)[0]:
+                sys.stdin.read(1)
+        except Exception:
+            pass
+
+
 def read_key():
     """Cross-platform arrow key / Enter detection."""
     if platform.system() == "Windows":
@@ -1261,17 +1300,8 @@ def main_loop():
     categories = ["YouTube Video (MP4)", "YouTube Music (MP3)", "Spotify", "Exit"]
     selected_index = 0
 
-    # FIX: Clear any leftover keypresses from the library countdown
-    # so they don't accidentally skip the Spotify warning pause
-    if platform.system() == "Windows":
-        import msvcrt
-        while msvcrt.kbhit():
-            msvcrt.getch()  # drain any pending keys
-    else:
-        import select
-        if sys.stdin.isatty():
-            while select.select([sys.stdin], [], [], 0)[0]:
-                sys.stdin.read(1)
+    # FIX: Clear any leftover keypresses from previous flows/countdowns
+    drain_pending_input()
 
     # Now safe to show the splash (Spotify warning won't be skipped)
     display_full_splash()
@@ -1324,6 +1354,8 @@ def main_loop():
             console.print()
             console.print(Text("Keyboard interrupt detected. Returning to main menu.", style=COL_WARN))
             pause_for_reading("Interrupt acknowledged", 15)
+            drain_pending_input()
+            display_full_splash()
         except Exception as e:
             console.print(Panel(
                 Text(f"Unexpected error: {str(e)}", style="bold red"),
