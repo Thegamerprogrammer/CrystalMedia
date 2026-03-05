@@ -107,6 +107,15 @@ if not command_exists("deno"):
     else:
         print("Deno skipped — YouTube may choke on protected videos.")
 
+# Node.js (alternate JS runtime for yt-dlp challenge solving)
+if not (command_exists("node") or command_exists("nodejs")):
+    if ask_install("Node.js (fallback JavaScript runtime for yt-dlp)"):
+        print("Installing Node.js with OS-aware package manager...")
+        ok = install_node_runtime_os_aware()
+        if not ok:
+            print("Node.js install helper could not complete automatically.")
+            print("Install manually: https://nodejs.org/en/download")
+
 # yt-dlp
 if not command_exists("yt-dlp"):
     if ask_install("yt-dlp"):
@@ -225,9 +234,12 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
                     break
             else:
                 import select
-                if select.select([sys.stdin], [], [], 0.1)[0]:
-                    sys.stdin.read(1)
-                    break
+                try:
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
+                        sys.stdin.read(1)
+                        break
+                except Exception:
+                    pass
             time.sleep(1)
             remaining -= 1
 
@@ -755,6 +767,8 @@ def read_key():
         return None
     else:
         import tty, termios, select
+        if not sys.stdin.isatty():
+            return None
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:
