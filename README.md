@@ -41,6 +41,8 @@ pip install .
 crystalmedia
 # Direct file launcher (now GUI-first)
 python CrystalMedia.py
+# Windows GUI launcher (no terminal window)
+CrystalMedia.pyw
 ```
 
 On first launch, CrystalMedia runs a dependency preflight/status check and self-healing diagnostics. Runtime auto-install of dependencies is disabled for packaging safety; install/update dependencies through pip.
@@ -246,3 +248,16 @@ PRs are welcome for UI polish, reliability improvements, and Spotify-mode recove
 - CSV files **must be in** `./csv` (relative to where you run `CrystalMedia.py`).
 - Leave filename blank in prompt to auto-detect latest CSV in `./csv` that matches playlist name.
 - Playlist title is auto-derived from the Spotify playlist link and used for fuzzy CSV matching.
+
+
+### Windows syntax-error quick fix (if `CrystalMedia.py` looks corrupted)
+
+If you see errors like `unexpected indent` or `unterminated triple-quoted string` at line 2, your local file is likely corrupted or partially edited.
+
+1. Re-download the latest source ZIP or `git pull`
+2. Ensure `CrystalMedia.py` starts with:
+   - `#!/usr/bin/env python3`
+   - `# -*- coding: utf-8 -*-`
+   - a closed triple-quoted header docstring
+3. Launch with `py CrystalMedia.py` (or use `CrystalMedia.pyw` on Windows).
+
