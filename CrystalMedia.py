@@ -362,8 +362,8 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
             live.update(
                 Panel(
                     content,
-                    title="Timeout",
-                    border_style=COL_WARN,
+                    title=Text("Continue", style=COL_MENU),
+                    border_style=COL_MENU,
                     padding=(0, 1),
                 )
             )
@@ -522,11 +522,12 @@ class FixedProgressLogger:
         self.max_logs = 12
         self.max_log_width = 110
         self.layout["progress"].update(self._waiting_panel())
+        self.started = False
 
     def _waiting_panel(self):
         """Render spinner placeholder until progress data arrives."""
         waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
-        return Panel(waiting_spinner, title="Progress", border_style=COL_MENU, title_align="left")
+        return Panel(waiting_spinner, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
 
     def add_log(self, msg: str, level: str = "info"):
         """Add message to log panel with color coding"""
@@ -555,8 +556,9 @@ class FixedProgressLogger:
 
         log_panel = Panel(
             log_text if self.logs else Text("Waiting for output...", style="dim"),
-            title="Download Log",
-            border_style="blue"
+            title=Text("Download Log", style=COL_MENU),
+            border_style=COL_MENU,
+            title_align="left"
         )
         self.layout["logs"].update(log_panel)
 
@@ -567,7 +569,7 @@ class FixedProgressLogger:
         self.progress.update(self.task, completed=percent, description=description)
 
         self.layout["progress"].update(
-            Panel(self.progress, title="Progress", border_style="green")
+            Panel(self.progress, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
         )
 
     def mark_complete(self, description: str = "Download complete!"):
@@ -577,16 +579,21 @@ class FixedProgressLogger:
         else:
             self.progress.update(self.task, completed=100, description=description)
         self.layout["progress"].update(
-            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
+            Panel(self.progress, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
         )
 
     def start(self):
-        self.live.start()
+        if not self.started:
+            self.live.start()
+            self.started = True
 
     def stop(self):
-        self.live.stop()
+        if self.started:
+            self.live.stop()
+            self.started = False
 
     def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
+        self.stop()
         pause_for_reading(message, seconds)
 
 
@@ -971,7 +978,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         if final_path:
             progress_logger.add_log(f"✓ Final file: {final_path}", "success")
         progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
-        progress_logger.stop()
+        progress_logger.wait_for_continue("Download success", 30)
         if final_path:
             console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
         else:
@@ -1358,7 +1365,6 @@ def download_spotify(url: str, is_playlist: bool) -> None:
             if failed:
                 progress_logger.add_log(f"⚠ Skipped {failed} track(s) that failed extraction.", "warning")
             progress_logger.wait_for_continue("Spotify download success", 30)
-            progress_logger.stop()
             console.print(Text(f"Downloaded {downloaded} track(s) (skipped {failed}) → {target_dir}", style=COL_GOOD))
             return
         except Exception as e:

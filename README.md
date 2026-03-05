@@ -10,6 +10,7 @@
 ## ⚡ Jump To
 
 - [🚀 30-Second Quick Start](#-30-second-quick-start)
+- [🧪 Interactive README + Full Visual Walkthrough](#-interactive-readme--full-visual-walkthrough)
 - [🎮 Interactive Walkthrough](#-interactive-walkthrough)
 - [⌨️ Controls Cheatsheet](#️-controls-cheatsheet)
 - [🧠 Download Modes](#-download-modes)
@@ -35,6 +36,57 @@ crystalmedia
 ```
 
 On first launch, CrystalMedia runs a dependency preflight/status check and self-healing diagnostics. Runtime auto-install of dependencies is disabled for packaging safety; install/update dependencies through pip.
+
+---
+
+
+## 🧪 Interactive README + Full Visual Walkthrough
+
+Before install, you can explore a modern clickable mini site + complete visual docs:
+
+- **Interactive README (glass UI):** `docs/interactive-readme.html`
+- **Pre-install demo:** `docs/interactive-demo.html`
+- **PyPI page:** https://pypi.org/project/crystalmedia/
+
+> On Windows, open `docs\interactive-readme.html` directly in your browser.
+
+### Full Screenshot Gallery (Setup + Functions + Troubleshooting)
+
+#### Setup
+![Setup Python](docs/media/07-setup-python.svg)
+![Setup PyPI Install](docs/media/08-setup-pip-install.svg)
+![Setup Source Install](docs/media/09-setup-source.svg)
+
+#### Core UI
+![Splash](docs/media/01-splash.svg)
+![Main Menu](docs/media/02-main-menu.svg)
+![Success](docs/media/06-success.svg)
+
+#### YouTube Functions
+![YouTube Flow](docs/media/03-youtube-flow.svg)
+![YouTube MP4 Quality](docs/media/10-youtube-mp4-quality.svg)
+![YouTube MP3 Bitrate](docs/media/11-youtube-mp3-bitrate.svg)
+
+#### Spotify Functions
+![Spotify Exportify](docs/media/04-spotify-exportify.svg)
+![Spotify Single](docs/media/12-spotify-single.svg)
+![Spotify Playlist CSV](docs/media/13-spotify-playlist-csv.svg)
+
+#### When You Get Stuck
+![Stuck Help](docs/media/05-stuck-help.svg)
+![Age Restricted Troubleshooting](docs/media/14-stuck-age-restricted.svg)
+![Missing Dependencies Troubleshooting](docs/media/15-stuck-missing-deps.svg)
+![Output and Logs](docs/media/16-output-structure.svg)
+
+### Video / GIF recommendation for release docs
+
+To publish real full-session recordings (menu navigation, mode selection, progress logs, and recovery flows), record with:
+
+- **OBS Studio** (long-form videos)
+- **ScreenToGif** (quick GIF walkthroughs)
+- **ShareX** (clip + GIF export)
+
+Then attach them to GitHub Releases and embed links in this README.
 
 ---
 
@@ -172,9 +224,3 @@ PRs are welcome for UI polish, reliability improvements, and Spotify-mode recove
 - CSV files **must be in** `./csv` (relative to where you run `CrystalMedia.py`).
 - Leave filename blank in prompt to auto-detect latest CSV in `./csv` that matches playlist name.
 - Playlist title is auto-derived from the Spotify playlist link and used for fuzzy CSV matching.
-
-- 
-## 🙏 Special Thanks To:
-- https://github.com/watsonbox/exportify (spotify metadata logic)
-- https://github.com/spotDL/spotify-downloader
-- https://github.com/yt-dlp/yt-dlp
