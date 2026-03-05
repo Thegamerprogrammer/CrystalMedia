@@ -547,15 +547,15 @@ class FixedProgressLogger:
         msg = strip_ansi(msg).replace("\n", " ").strip()
 
         if level == "error":
-            styled_msg = f"[red]{msg}[/red]"
+            style = "red"
         elif level == "warning":
-            styled_msg = f"[yellow]{msg}[/yellow]"
+            style = "yellow"
         elif level == "success":
-            styled_msg = f"[green]{msg}[/green]"
+            style = "green"
         else:
-            styled_msg = f"[cyan]{msg}[/cyan]"
+            style = COL_MENU
 
-        self.logs.append(Text(styled_msg))
+        self.logs.append(Text(msg, style=style))
         log_runtime(f"[{level.upper()}] {msg}")
         if level in ("error", "warning"):
             log_crash(msg)
@@ -564,7 +564,7 @@ class FixedProgressLogger:
 
         log_text = Text()
         for log_entry in self.logs:
-            log_text.append(log_entry)
+            log_text.append_text(log_entry)
             log_text.append("\n")
 
         log_panel = Panel(
@@ -907,9 +907,12 @@ def _spotify_page_queries(url: str, max_tracks: int = 30):
 
     # Strategy 1 (more stable): parse /track/<id> links and resolve via oEmbed.
     track_ids = []
-    for tid in re.findall(r'/track/([A-Za-z0-9]{22})', page):
-        if tid not in track_ids:
-            track_ids.append(tid)
+    for pattern in [r'/track/([A-Za-z0-9]{22})', r'open\.spotify\.com/track/([A-Za-z0-9]{22})', r'spotify:track:([A-Za-z0-9]{22})']:
+        for tid in re.findall(pattern, page):
+            if tid not in track_ids:
+                track_ids.append(tid)
+            if len(track_ids) >= max_tracks:
+                break
         if len(track_ids) >= max_tracks:
             break
 
@@ -1020,21 +1023,12 @@ def download_spotify(url: str, is_playlist: bool) -> None:
         except Exception as e:
             progress_logger.add_log(f"yt-dlp Spotify fallback failed: {str(e)}", "error")
 
-    progress_logger.add_log("Trying spotdl legacy mode as last fallback...", "warning")
-    try:
-        spotdl_client = Spotdl()
-        songs = spotdl_client.search([url])
-        results = spotdl_client.download_songs(songs)
-        progress_logger.mark_complete(f"Downloaded {len(results)} track(s)!")
-        progress_logger.add_log(f"✓ Downloaded {len(results)} track(s) → {target_dir}", "success")
-        progress_logger.wait_for_continue("Spotify download success", 30)
-        progress_logger.stop()
-        console.print(Text(f"Downloaded {len(results)} track(s) → {target_dir}", style=COL_GOOD))
-    except Exception as e:
-        progress_logger.stop()
-        console.print(Text(f"Spotify download failed: {str(e)}", style=COL_ERR))
-        log_crash(f"Spotify download failed: {str(e)}")
-        pause_for_reading("Error — copy the message above", 15)
+    progress_logger.add_log("Could not parse playable track list from Spotify URL.", "error")
+    progress_logger.add_log("Open a public Spotify track/playlist URL and try again.", "warning")
+    progress_logger.add_log("(Legacy spotdl fallback disabled: requires private client_id/client_secret.)", "warning")
+    progress_logger.stop()
+    console.print(Text("Spotify metadata parsing failed for this URL. Use a public open.spotify.com track/playlist link.", style=COL_ERR))
+    pause_for_reading("Spotify metadata parse failed — review above", 15)
 
 
 # ──────────────────────────────────────────────
