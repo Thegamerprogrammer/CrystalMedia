@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CrystalMedia Interactive Demo</title>
+  <style>
+    body{font-family:Inter,Segoe UI,Arial,sans-serif;background:#0b1220;color:#d6e4ff;margin:0}
+    .wrap{max-width:900px;margin:40px auto;padding:24px}
+    .card{background:#111a2c;border:1px solid #8fb6ff55;border-radius:16px;padding:20px;box-shadow:0 10px 30px #0006}
+    .glow{color:#a5d8ff;text-shadow:0 0 12px #7cb8ff66;animation:pulse 2s infinite}
+    @keyframes pulse{50%{opacity:.7}}
+    .bar{height:12px;background:#1e2f52;border-radius:10px;overflow:hidden;margin:16px 0}
+    .bar>span{display:block;height:100%;width:0;background:linear-gradient(90deg,#b3e0ff,#a5d8ff);animation:load 3s infinite}
+    @keyframes load{0%{width:0}70%{width:96%}100%{width:100%}}
+    .btns a{display:inline-block;margin:8px 8px 0 0;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:600}
+    .primary{background:#b3e0ff;color:#001018}.ghost{border:1px solid #b3e0ff;color:#d6e4ff}
+    code{background:#0b1220;padding:2px 6px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1 class="glow">CrystalMedia — Interactive Preview</h1>
+      <p>This mini demo shows the visual style and flow before installing the CLI package.</p>
+      <div class="bar"><span></span></div>
+      <p><strong>Try next:</strong> install and run <code>crystalmedia</code> from terminal.</p>
+      <div class="btns">
+        <a class="primary" href="https://pypi.org/project/crystalmedia/">View on PyPI</a>
+        <a class="ghost" href="https://github.com/Thegamerprogrammer/CrystalMedia">GitHub Repo</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

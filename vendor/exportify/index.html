@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CrystalMedia Exportify Helper</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#0b1020; color:#d6e4ff; margin:0; padding:24px; }
+    .card { max-width:900px; margin:auto; background:#121a33; border:1px solid #2a3a66; border-radius:12px; padding:20px; }
+    h1 { margin-top:0; color:#a5d8ff; }
+    code { background:#1b2648; padding:2px 6px; border-radius:4px; }
+    .btn { display:inline-block; padding:10px 14px; border-radius:8px; text-decoration:none; margin-right:8px; }
+    .primary { background:#3b82f6; color:white; }
+    .secondary { background:#243b74; color:#d6e4ff; }
+    ol li { margin:8px 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>CrystalMedia → Exportify Playlist CSV Guide</h1>
+    <p><strong>Playlist (must match):</strong> <span id="playlistName">(loading...)</span></p>
+    <p><strong>Save CSV to:</strong> <code id="csvDir">./csv</code></p>
+
+    <ol>
+      <li>Click <strong>Open Exportify</strong> and log in to Spotify.</li>
+      <li>In Exportify, export the playlist shown above.</li>
+      <li>Save the CSV file into the exact folder shown above.</li>
+      <li>Keep the filename containing the playlist name to allow automatic matching.</li>
+      <li>Return to CrystalMedia and press Enter on CSV prompt to auto-detect.</li>
+    </ol>
+
+    <p>
+      <a class="btn primary" href="https://watsonbox.github.io/exportify/" target="_blank" rel="noreferrer">Open Exportify</a>
+      <a class="btn secondary" id="playlistLink" href="#" target="_blank" rel="noreferrer">Open Playlist Link</a>
+    </p>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const playlist = params.get('playlist') || 'playlist';
+    const csvDir = params.get('csv_dir') || './csv';
+    const playlistUrl = params.get('playlist_url') || 'https://open.spotify.com/';
+    document.getElementById('playlistName').textContent = playlist;
+    document.getElementById('csvDir').textContent = csvDir;
+    document.getElementById('playlistLink').href = playlistUrl;
+  </script>
+</body>
+</html>
