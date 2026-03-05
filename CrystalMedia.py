@@ -25,6 +25,8 @@ from pathlib import Path
 import zipfile
 import tarfile
 import urllib.request
+import html
+import json
 
 # ──────────────────────────────────────────────
 # ANSI stripper for yt-dlp colored progress strings
@@ -47,6 +49,14 @@ def ask_install(what: str) -> bool:
 def run_quiet(cmd_list):
     try:
         subprocess.check_call(cmd_list, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except:
+        return False
+
+
+def run_shell_quiet(cmd: str):
+    try:
+        subprocess.check_call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
     except:
         return False
@@ -82,7 +92,7 @@ if not command_exists("deno"):
         if platform.system() == "Windows":
             run_quiet(["powershell", "-Command", "irm https://deno.land/install.ps1 | iex"])
         else:
-            run_quiet(["curl", "-fsSL", "https://deno.land/install.sh", "|", "sh"])
+            run_shell_quiet("curl -fsSL https://deno.land/install.sh | sh")
         if not command_exists("deno"):
             print("Deno install failed. Go to https://deno.com manually.")
     else:
@@ -607,48 +617,96 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     console.print(Text("Maximum retries reached. Check connection or try again later.", style=COL_ERR))
     pause_for_reading("Max retries — review above", 15)
 
+def _spotify_oembed_query(url: str) -> str:
+    req = urllib.request.Request(f"https://open.spotify.com/oembed?url={url}", headers={"User-Agent": random.choice(USER_AGENTS)})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+    title = payload.get("title", "")
+    author = payload.get("author_name", "")
+    query = f"{title} {author}".strip()
+    return query
+
+
+def _spotify_page_queries(url: str, max_tracks: int = 30):
+    req = urllib.request.Request(url, headers={"User-Agent": random.choice(USER_AGENTS)})
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        page = resp.read().decode("utf-8", errors="ignore")
+
+    rows = re.findall(r'data-testid="track-row".*?(?=data-testid="track-row"|</body>)', page, flags=re.S)
+    queries = []
+    for row in rows:
+        title_match = re.search(r'data-encore-id="listRowTitle"[^>]*>\s*<span[^>]*>(.*?)</span>', row, flags=re.S)
+        artist_match = re.search(r'data-encore-id="text">(.*?)</span>', row, flags=re.S)
+        if not title_match:
+            continue
+        title = html.unescape(re.sub(r'<[^>]+>', '', title_match.group(1))).strip()
+        artist = html.unescape(re.sub(r'<[^>]+>', '', artist_match.group(1))).strip() if artist_match else ""
+        if not title:
+            continue
+        queries.append(f"{title} {artist}".strip())
+        if len(queries) >= max_tracks:
+            break
+    return queries
+
+
+def _download_spotify_queries_with_ytdlp(queries, target_dir: Path):
+    target_dir.mkdir(parents=True, exist_ok=True)
+    ydl_opts = {
+        "quiet": True,
+        "noprogress": True,
+        "format": "bestaudio/best",
+        "outtmpl": str(target_dir / "%(title)s.%(ext)s"),
+        "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
+        "http_headers": {"User-Agent": random.choice(USER_AGENTS)},
+    }
+    count = 0
+    with YoutubeDL(ydl_opts) as ydl:
+        for idx, query in enumerate(queries, start=1):
+            console.print(Text(f"[{idx}/{len(queries)}] Spotify fallback search: {query}", style=COL_MENU))
+            ydl.download([f"ytsearch1:{query}"])
+            count += 1
+    return count
+
+
 def download_spotify(url: str, is_playlist: bool) -> None:
     subfolder = "Playlist" if is_playlist else "Single"
     target_dir = Path("downloads/SPOTIFY") / subfolder
     target_dir.mkdir(parents=True, exist_ok=True)
 
+    console.print(Text("Spotify downloader (no-premium fallback mode)", style=COL_ACC))
+    console.print(Text(f"Target: {target_dir}", style=COL_MENU))
+
+    queries = []
     try:
-        spotdl_client = Spotdl()
-        songs = spotdl_client.search([url])
-        title = songs[0].name if songs else "Unknown track"
-        if is_playlist:
-            title = "Playlist"
-        console.print(Text("Downloading: ", style=COL_ACC), end="")
-        console.print(Text(title, style="bold yellow"))
-    except:
-        console.print(Text("Could not extract title — downloading anyway...", style=COL_WARN))
+        if is_playlist or "/playlist/" in url or "/album/" in url:
+            queries = _spotify_page_queries(url)
+        else:
+            q = _spotify_oembed_query(url)
+            if q:
+                queries = [q]
+    except Exception as e:
+        console.print(Text(f"Metadata parsing fallback triggered: {str(e)[:120]}", style=COL_WARN))
 
-    console.print(Text(f"Attempting to download {'playlist' if is_playlist else 'track'} → {target_dir}", style=COL_ACC))
+    if queries:
+        try:
+            downloaded = _download_spotify_queries_with_ytdlp(queries, target_dir)
+            console.print(Text(f"Downloaded {downloaded} track(s) → {target_dir}", style=COL_GOOD))
+            pause_for_reading("Spotify download finished — review above", 30)
+            return
+        except Exception as e:
+            console.print(Text(f"yt-dlp Spotify fallback failed: {str(e)}", style=COL_ERR))
 
-    console.print(Panel(
-        Text(
-            "Spotify mode is non-functional due to February 2026 Developer Mode update.\n"
-            "Shared credentials are rate-limited or rejected (403 / 86400s errors).\n"
-            "Refer: https://github.com/spotDL/spotify-downloader/issues/2617\n"
-            "Upgrade spotdl when resolved: pip install --upgrade spotdl",
-            justify="center",
-            style="bold red"
-        ),
-        title="Spotify Status",
-        border_style="red"
-    ))
-
-    pause_for_reading("Spotify warning — review above", 15)
-
+    console.print(Text("Trying spotdl legacy mode as last fallback...", style=COL_WARN))
     try:
         spotdl_client = Spotdl()
         songs = spotdl_client.search([url])
         results = spotdl_client.download_songs(songs)
         console.print(Text(f"Downloaded {len(results)} track(s) → {target_dir}", style=COL_GOOD))
-        pause_for_reading("Spotify download finished — review above", 15)
+        pause_for_reading("Spotify download finished — review above", 30)
     except Exception as e:
         console.print(Text(f"Spotify download failed: {str(e)}", style=COL_ERR))
         pause_for_reading("Error — copy the message above", 15)
+
 
 # ──────────────────────────────────────────────
 # Cross-platform arrow-key menu navigation
