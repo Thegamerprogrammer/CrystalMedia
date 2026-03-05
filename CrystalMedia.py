@@ -502,10 +502,16 @@ def clear_screen():
 def create_folders():
     base = DOWNLOADS_ROOT
     base.mkdir(exist_ok=True)
+    created_paths = []
     for category in ["YT VIDEO", "YT MUSIC", "SPOTIFY"]:
         for subcategory in ["Single", "Playlist"]:
-            (base / category / subcategory).mkdir(parents=True, exist_ok=True)
+            path = (base / category / subcategory)
+            path.mkdir(parents=True, exist_ok=True)
+            created_paths.append(path)
     console.print(Text("Output directories initialised.", style=COL_GOOD))
+    console.print(Text(f"Base folder: {base.resolve()}", style=COL_MENU))
+    for path in created_paths:
+        console.print(Text(f" • {path.resolve()}", style=COL_MENU))
     pause_for_reading("Directories ready", 2)
 
 create_folders()
@@ -914,9 +920,11 @@ def _extract_track_ids_from_page(page: str, max_tracks: int = 30):
 
     patterns = [
         r'/track/([A-Za-z0-9]{22})',
+        r'\/track\/([A-Za-z0-9]{22})',
         r'open\.spotify\.com/track/([A-Za-z0-9]{22})',
         r'spotify:track:([A-Za-z0-9]{22})',
         r'spotify%3Atrack%3A([A-Za-z0-9]{22})',
+        r'spotify%253Atrack%253A([A-Za-z0-9]{22})',
         r'"uri"\s*:\s*"spotify:track:([A-Za-z0-9]{22})"',
         r'"entityUri"\s*:\s*"spotify:track:([A-Za-z0-9]{22})"',
     ]
@@ -955,15 +963,26 @@ def _spotify_page_queries(url: str, max_tracks: int = 30):
     queries = []
     track_ids = _extract_track_ids_from_page(page, max_tracks=max_tracks)
 
+    unresolved_track_ids = []
     for tid in track_ids:
         try:
             q = _spotify_oembed_query(f"https://open.spotify.com/track/{tid}")
             if q and q not in queries:
                 queries.append(q)
+            else:
+                unresolved_track_ids.append(tid)
         except Exception:
+            unresolved_track_ids.append(tid)
             continue
         if len(queries) >= max_tracks:
             break
+
+    if queries:
+        return queries
+
+    # Last-resort fallback when IDs were found but oEmbed lookup is blocked/throttled.
+    for tid in unresolved_track_ids[:max_tracks]:
+        queries.append(f"https://open.spotify.com/track/{tid}")
 
     if queries:
         return queries
