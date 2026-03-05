@@ -166,14 +166,15 @@ Use responsibly and only with content you are authorized to download.
 
 PRs are welcome for UI polish, reliability improvements, and Spotify-mode recovery when upstream ecosystem changes stabilize.
 
-## 🙏 Special Thanks To:
-https://github.com/watsonbox/exportify(spotify metadata logic)
-https://github.com/spotDL/spotify-downloader
-https://github.com/yt-dlp/yt-dlp
-
 
 ## 🧾 Exportify CSV (Playlist) Quick Notes
 
 - CSV files **must be in** `./csv` (relative to where you run `CrystalMedia.py`).
 - Leave filename blank in prompt to auto-detect latest CSV in `./csv` that matches playlist name.
 - Playlist title is auto-derived from the Spotify playlist link and used for fuzzy CSV matching.
+
+- 
+## 🙏 Special Thanks To:
+- https://github.com/watsonbox/exportify(spotify metadata logic)
+- https://github.com/spotDL/spotify-downloader
+- https://github.com/yt-dlp/yt-dlp
