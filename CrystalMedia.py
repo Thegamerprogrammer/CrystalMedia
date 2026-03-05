@@ -514,58 +514,39 @@ create_folders()
 # Fixed Progress Logger with Layout
 # ──────────────────────────────────────────────
 
-class ContinuePromptTooltip:
-    """Animated continue prompt rendered inside a tooltip panel."""
-    def __init__(self, message: str = "Download success", border_style: str = COL_WARN):
-        self.message = message
-        self.border_style = border_style
-        self.frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-
-    def render(self, remaining: int, frame_idx: int) -> Panel:
-        prompt = Text.assemble(
-            (f"{self.frames[frame_idx]} {self.message} {remaining}...\n", COL_ACC),
-            ("Press Enter or any key to continue", "italic dim")
-        )
-        return Panel(prompt, title="Timeout", border_style=self.border_style, title_align="left", padding=(0, 1))
-
 class FixedProgressLogger:
     """Fixed progress bar + scrolling log panel using Rich Layout"""
-    def __init__(self, console_obj, header_text: Text):
+    def __init__(self, console_obj, header_text: Text = None):
         self.console = console_obj
         self.logs = []
         self.layout = Layout()
-        self.layout.split_column(
-            Layout(name="header", size=10),
-            Layout(name="progress", size=6),
-            Layout(name="logs", size=10)
-        )
-        self.layout["header"].update(
-            Panel(header_text, border_style=COL_MENU, title="CrystalMedia", title_align="left")
-        )
+        if header_text is not None:
+            self.layout.split_column(
+                Layout(name="header", size=10),
+                Layout(name="progress", size=8),
+                Layout(name="logs", minimum_size=10)
+            )
+            self.layout["header"].update(
+                Panel(header_text, border_style=COL_MENU, title="CrystalMedia", title_align="left")
+            )
+        else:
+            self.layout.split_column(
+                Layout(name="progress", size=8),
+                Layout(name="logs", minimum_size=10)
+            )
         self.progress = Progress(
-            SpinnerColumn(style=COL_MENU),
-            TextColumn("[progress.description]{task.description}", style=COL_MENU),
-            BarColumn(complete_style=COL_MENU, finished_style=COL_MENU, pulse_style=COL_MENU),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%", style=COL_MENU),
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             console=self.console
         )
         self.task = None
-        self.live = Live(self.layout, console=self.console, refresh_per_second=4, vertical_overflow="crop", screen=True)
-        self.max_logs = 8
-        self.max_log_width = 110
-        self.layout["progress"].update(self._waiting_panel())
-        self.continue_tooltip = ContinuePromptTooltip()
-
-    def _waiting_panel(self):
-        """Render spinner placeholder until progress data arrives."""
-        waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
-        return Panel(waiting_spinner, title="Progress", border_style=COL_MENU, title_align="left")
+        self.live = Live(self.layout, console=self.console, refresh_per_second=4)
 
     def add_log(self, msg: str, level: str = "info"):
         """Add message to log panel with color coding"""
         msg = strip_ansi(msg).replace("\n", " ").strip()
-        if len(msg) > self.max_log_width:
-            msg = msg[:self.max_log_width - 1] + "…"
 
         if level == "error":
             styled_msg = f"[red]{msg}[/red]"
@@ -574,14 +555,15 @@ class FixedProgressLogger:
         elif level == "success":
             styled_msg = f"[green]{msg}[/green]"
         else:
-            styled_msg = f"[{COL_MENU}]{msg}[/{COL_MENU}]"
+            styled_msg = f"[cyan]{msg}[/cyan]"
 
-        self.logs.append(Text.from_markup(styled_msg))
+        self.logs.append(Text(styled_msg))
         log_runtime(f"[{level.upper()}] {msg}")
         if level in ("error", "warning"):
             log_crash(msg)
-        if len(self.logs) > self.max_logs:
-            self.logs = self.logs[-self.max_logs:]
+
+        if len(self.logs) > 15:
+            self.logs = self.logs[-15:]
 
         log_text = Text()
         for log_entry in self.logs:
@@ -591,53 +573,29 @@ class FixedProgressLogger:
         log_panel = Panel(
             log_text if self.logs else Text("Waiting for output...", style="dim"),
             title="Download Log",
-            border_style=COL_MENU,
-            title_align="left"
+            border_style="blue"
         )
         self.layout["logs"].update(log_panel)
 
     def update_progress(self, percent: float, description: str = "Downloading"):
-        if self.task is None:
+        """Update progress bar"""
+        if not self.task:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
+
         self.layout["progress"].update(
-            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
+            Panel(self.progress, title="Progress", border_style="green")
         )
 
     def mark_complete(self, description: str = "Download complete!"):
-        complete_text = Text(f"✓ {description}", style=COL_GOOD)
+        """Show a completed progress state even when file already exists."""
+        if self.task is None:
+            self.task = self.progress.add_task(description, total=100, completed=100)
+        else:
+            self.progress.update(self.task, completed=100, description=description)
         self.layout["progress"].update(
-            Panel(complete_text, title="Progress", border_style=COL_GOOD, title_align="left")
+            Panel(self.progress, title="Progress", border_style="green")
         )
-
-    def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
-        return self._wait_for_continue_impl(message, seconds)
-
-    def _wait_for_continue_impl(self, message: str = "Download success", seconds: int = 30):
-        """Show timeout prompt inside progress panel to avoid layout gaps."""
-        remaining = seconds
-        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        frame_idx = 0
-        while remaining > 0:
-            self.continue_tooltip.message = message
-            self.layout["progress"].update(self.continue_tooltip.render(remaining, frame_idx))
-            if platform.system() == "Windows":
-                import msvcrt
-                if msvcrt.kbhit():
-                    msvcrt.getch()
-                    break
-            else:
-                import select
-                try:
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        sys.stdin.read(1)
-                        break
-                except Exception:
-                    # Non-interactive stdin in some environments; just continue countdown
-                    pass
-            time.sleep(1)
-            remaining -= 1
-            frame_idx = (frame_idx + 1) % len(frames)
 
     def start(self):
         self.live.start()
@@ -645,41 +603,8 @@ class FixedProgressLogger:
     def stop(self):
         self.live.stop()
 
-
-def show_inline_continue_prompt(progress_logger, message: str = "Download success", seconds: int = 30):
-    """Compatibility wrapper so post-download prompt never crashes on missing method."""
-    wait_fn = getattr(progress_logger, "wait_for_continue", None)
-    if callable(wait_fn):
-        wait_fn(message, seconds)
-        return
-
-    # Fallback path for stale runtime objects/classes.
-    with Live(console=console, refresh_per_second=4, transient=True) as live:
-        remaining = seconds
-        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        frame_idx = 0
-        while remaining > 0:
-            content = Text.assemble(
-                (f"{frames[frame_idx]} {message} {remaining}...\n", COL_ACC),
-                ("Press Enter or any key to continue", "italic dim")
-            )
-            live.update(Panel(content, title="Timeout", border_style=COL_WARN, padding=(0, 1)))
-            if platform.system() == "Windows":
-                import msvcrt
-                if msvcrt.kbhit():
-                    msvcrt.getch()
-                    break
-            else:
-                import select
-                try:
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        sys.stdin.read(1)
-                        break
-                except Exception:
-                    pass
-            time.sleep(1)
-            remaining -= 1
-            frame_idx = (frame_idx + 1) % len(frames)
+    def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
+        pause_for_reading(message, seconds)
 
 
 def build_download_header(title: str, mode: str, content_type: str, target_dir: Path) -> Text:
@@ -803,12 +728,12 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
 
     mode = "Playlist" if is_playlist else "Single Item"
+    console.print(Text(f"Initiating {mode} {content_type.upper()} download → {target_dir}", style=COL_ACC))
 
     options = get_ydl_options(is_playlist, content_type)
 
     # Initialize fixed progress logger
-    progress_header = build_download_header(title if "title" in locals() else "Unknown", mode, content_type, target_dir)
-    progress_logger = FixedProgressLogger(console, progress_header)
+    progress_logger = FixedProgressLogger(console)
     progress_logger.start()
     progress_logger.add_log(f"Starting {mode} {content_type.upper()} download", "info")
 
@@ -939,12 +864,12 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         if final_path:
             progress_logger.add_log(f"✓ Final file: {final_path}", "success")
         progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
-        progress_logger.wait_for_continue("Download success", 30)
         progress_logger.stop()
         if final_path:
             console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
         else:
             console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
+        pause_for_reading("Download success — review above", 15)
         return
 
     progress_logger.add_log("Maximum retries reached", "error")
