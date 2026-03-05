@@ -644,7 +644,6 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         "http_headers": {"User-Agent": random.choice(USER_AGENTS)},
         "remux_video": "mp4",
         "format_sort": ["ext:mp4:m4a"],
-        "js_runtimes": available_js_runtimes(),
     }
     if is_playlist:
         options.update({"sleep_requests": 2, "sleep_interval": 5, "max_sleep_interval": 15})
@@ -695,7 +694,7 @@ def select_js_runtime_preference() -> str:
 def build_js_runtime_profiles(preference: str):
     installed = available_js_runtimes()
     if not installed:
-        return [[]]
+        return [None]
     deno_first = [["deno"], ["node"], ["nodejs"], ["deno", "node"], ["node", "deno"]]
     node_first = [["node"], ["nodejs"], ["deno"], ["node", "deno"], ["deno", "node"]]
     auto_order = [["node"], ["nodejs"], ["deno"], ["node", "deno"], ["deno", "node"]]
@@ -707,6 +706,13 @@ def build_js_runtime_profiles(preference: str):
         if filtered and filtered not in profiles:
             profiles.append(filtered)
     return profiles or [installed]
+
+
+def to_js_runtime_option(runtime_list):
+    """yt-dlp expects a dict mapping runtime->config for js_runtimes."""
+    if not runtime_list:
+        return None
+    return {runtime: {} for runtime in runtime_list}
 
 def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     try:
@@ -801,8 +807,12 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     runtime_profiles = build_js_runtime_profiles(runtime_preference)
 
     for runtime_try, runtime_list in enumerate(runtime_profiles, start=1):
-        runtime_value = ",".join(runtime_list)
-        options["js_runtimes"] = runtime_list
+        runtime_value = ",".join(runtime_list) if runtime_list else "default"
+        js_runtime_option = to_js_runtime_option(runtime_list)
+        if js_runtime_option is None:
+            options.pop("js_runtimes", None)
+        else:
+            options["js_runtimes"] = js_runtime_option
         progress_logger.add_log(f"JS runtime try {runtime_try}/{len(runtime_profiles)} → {runtime_value}", "info")
         console.print(Text(f"Trying JS runtime profile: {runtime_value}", style=COL_ACC))
 
