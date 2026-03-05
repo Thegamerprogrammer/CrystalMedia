@@ -514,20 +514,6 @@ create_folders()
 # Fixed Progress Logger with Layout
 # ──────────────────────────────────────────────
 
-class ContinuePromptTooltip:
-    """Animated continue prompt rendered inside a tooltip panel."""
-    def __init__(self, message: str = "Download success", border_style: str = COL_WARN):
-        self.message = message
-        self.border_style = border_style
-        self.frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-
-    def render(self, remaining: int, frame_idx: int) -> Panel:
-        prompt = Text.assemble(
-            (f"{self.frames[frame_idx]} {self.message} {remaining}...\n", COL_ACC),
-            ("Press Enter or any key to continue", "italic dim")
-        )
-        return Panel(prompt, title="Timeout", border_style=self.border_style, title_align="left", padding=(0, 1))
-
 class FixedProgressLogger:
     """Fixed progress bar + scrolling log panel using Rich Layout"""
     def __init__(self, console_obj, header_text: Text):
@@ -535,12 +521,8 @@ class FixedProgressLogger:
         self.logs = []
         self.layout = Layout()
         self.layout.split_column(
-            Layout(name="header", size=10),
-            Layout(name="progress", size=6),
-            Layout(name="logs", size=10)
-        )
-        self.layout["header"].update(
-            Panel(header_text, border_style=COL_MENU, title="CrystalMedia", title_align="left")
+            Layout(name="progress", size=8),
+            Layout(name="logs", size=16)
         )
         self.progress = Progress(
             SpinnerColumn(style=COL_MENU),
@@ -550,11 +532,10 @@ class FixedProgressLogger:
             console=self.console
         )
         self.task = None
-        self.live = Live(self.layout, console=self.console, refresh_per_second=4, vertical_overflow="crop", screen=True)
-        self.max_logs = 8
+        self.live = Live(self.layout, console=self.console, refresh_per_second=4)
+        self.max_logs = 12
         self.max_log_width = 110
         self.layout["progress"].update(self._waiting_panel())
-        self.continue_tooltip = ContinuePromptTooltip()
 
     def _waiting_panel(self):
         """Render spinner placeholder until progress data arrives."""
@@ -580,8 +561,8 @@ class FixedProgressLogger:
         log_runtime(f"[{level.upper()}] {msg}")
         if level in ("error", "warning"):
             log_crash(msg)
-        if len(self.logs) > self.max_logs:
-            self.logs = self.logs[-self.max_logs:]
+        if len(self.logs) > 15:
+            self.logs = self.logs[-15:]
 
         log_text = Text()
         for log_entry in self.logs:
@@ -597,6 +578,7 @@ class FixedProgressLogger:
         self.layout["logs"].update(log_panel)
 
     def update_progress(self, percent: float, description: str = "Downloading"):
+        """Update progress bar"""
         if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
@@ -605,39 +587,14 @@ class FixedProgressLogger:
         )
 
     def mark_complete(self, description: str = "Download complete!"):
-        complete_text = Text(f"✓ {description}", style=COL_GOOD)
+        """Show a completed progress state even when file already exists."""
+        if self.task is None:
+            self.task = self.progress.add_task(description, total=100, completed=100)
+        else:
+            self.progress.update(self.task, completed=100, description=description)
         self.layout["progress"].update(
-            Panel(complete_text, title="Progress", border_style=COL_GOOD, title_align="left")
+            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
-
-    def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
-        return self._wait_for_continue_impl(message, seconds)
-
-    def _wait_for_continue_impl(self, message: str = "Download success", seconds: int = 30):
-        """Show timeout prompt inside progress panel to avoid layout gaps."""
-        remaining = seconds
-        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        frame_idx = 0
-        while remaining > 0:
-            self.continue_tooltip.message = message
-            self.layout["progress"].update(self.continue_tooltip.render(remaining, frame_idx))
-            if platform.system() == "Windows":
-                import msvcrt
-                if msvcrt.kbhit():
-                    msvcrt.getch()
-                    break
-            else:
-                import select
-                try:
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        sys.stdin.read(1)
-                        break
-                except Exception:
-                    # Non-interactive stdin in some environments; just continue countdown
-                    pass
-            time.sleep(1)
-            remaining -= 1
-            frame_idx = (frame_idx + 1) % len(frames)
 
     def start(self):
         self.live.start()
@@ -645,41 +602,8 @@ class FixedProgressLogger:
     def stop(self):
         self.live.stop()
 
-
-def show_inline_continue_prompt(progress_logger, message: str = "Download success", seconds: int = 30):
-    """Compatibility wrapper so post-download prompt never crashes on missing method."""
-    wait_fn = getattr(progress_logger, "wait_for_continue", None)
-    if callable(wait_fn):
-        wait_fn(message, seconds)
-        return
-
-    # Fallback path for stale runtime objects/classes.
-    with Live(console=console, refresh_per_second=4, transient=True) as live:
-        remaining = seconds
-        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        frame_idx = 0
-        while remaining > 0:
-            content = Text.assemble(
-                (f"{frames[frame_idx]} {message} {remaining}...\n", COL_ACC),
-                ("Press Enter or any key to continue", "italic dim")
-            )
-            live.update(Panel(content, title="Timeout", border_style=COL_WARN, padding=(0, 1)))
-            if platform.system() == "Windows":
-                import msvcrt
-                if msvcrt.kbhit():
-                    msvcrt.getch()
-                    break
-            else:
-                import select
-                try:
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        sys.stdin.read(1)
-                        break
-                except Exception:
-                    pass
-            time.sleep(1)
-            remaining -= 1
-            frame_idx = (frame_idx + 1) % len(frames)
+    def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
+        pause_for_reading(message, seconds)
 
 
 def build_download_header(title: str, mode: str, content_type: str, target_dir: Path) -> Text:
@@ -722,7 +646,6 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         "http_headers": {"User-Agent": random.choice(USER_AGENTS)},
         "remux_video": "mp4",
         "format_sort": ["ext:mp4:m4a"],
-        "js_runtimes": available_js_runtimes(),
     }
     if is_playlist:
         options.update({"sleep_requests": 2, "sleep_interval": 5, "max_sleep_interval": 15})
@@ -773,7 +696,7 @@ def select_js_runtime_preference() -> str:
 def build_js_runtime_profiles(preference: str):
     installed = available_js_runtimes()
     if not installed:
-        return [[]]
+        return [None]
     deno_first = [["deno"], ["node"], ["nodejs"], ["deno", "node"], ["node", "deno"]]
     node_first = [["node"], ["nodejs"], ["deno"], ["node", "deno"], ["deno", "node"]]
     auto_order = [["node"], ["nodejs"], ["deno"], ["node", "deno"], ["deno", "node"]]
@@ -785,6 +708,13 @@ def build_js_runtime_profiles(preference: str):
         if filtered and filtered not in profiles:
             profiles.append(filtered)
     return profiles or [installed]
+
+
+def to_js_runtime_option(runtime_list):
+    """yt-dlp expects a dict mapping runtime->config for js_runtimes."""
+    if not runtime_list:
+        return None
+    return {runtime: {} for runtime in runtime_list}
 
 def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     try:
@@ -803,8 +733,11 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
 
     mode = "Playlist" if is_playlist else "Single Item"
+    console.print(Text(f"Initiating {mode} {content_type.upper()} download → {target_dir}", style=COL_ACC))
 
     options = get_ydl_options(is_playlist, content_type)
+
+    runtime_preference = select_js_runtime_preference()
 
     # Initialize fixed progress logger
     progress_header = build_download_header(title if "title" in locals() else "Unknown", mode, content_type, target_dir)
@@ -838,7 +771,10 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 self.logger.add_log(clean_msg, level)
 
         def debug(self, msg):
-            self._handle_message(msg, "info")
+            if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
+                if 'ETA' in msg or '%' in msg:
+                    return
+                self.logger.add_log(strip_ansi(msg), "info")
 
         def info(self, msg):
             self._handle_message(msg, "info")
@@ -871,12 +807,15 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     final_path = None
     download_completed = False
 
-    runtime_preference = select_js_runtime_preference()
     runtime_profiles = build_js_runtime_profiles(runtime_preference)
 
     for runtime_try, runtime_list in enumerate(runtime_profiles, start=1):
-        runtime_value = ",".join(runtime_list)
-        options["js_runtimes"] = runtime_list
+        runtime_value = ",".join(runtime_list) if runtime_list else "default"
+        js_runtime_option = to_js_runtime_option(runtime_list)
+        if js_runtime_option is None:
+            options.pop("js_runtimes", None)
+        else:
+            options["js_runtimes"] = js_runtime_option
         progress_logger.add_log(f"JS runtime try {runtime_try}/{len(runtime_profiles)} → {runtime_value}", "info")
         console.print(Text(f"Trying JS runtime profile: {runtime_value}", style=COL_ACC))
 
@@ -945,6 +884,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
         else:
             console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
+        pause_for_reading("Download success — review above", 30)
         return
 
     progress_logger.add_log("Maximum retries reached", "error")
