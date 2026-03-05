@@ -1,32 +1,6 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+
 """
 CrystalMedia v4 GUI Launcher
-============================
-Primary entrypoint for CrystalMedia now targets the PyWebView glass GUI.
-Legacy terminal mode is exposed via `crystalmedia-terminal`.
-"""
-
-from __future__ import annotations
-
-import argparse
-import sys
-
-from crystalmedia.gui import launch_gui
-
-
-__version__ = "4.0.0"
-
-
-def main_loop() -> None:
-    """Backwards-compatible alias for old callers expecting main_loop."""
-    launch_gui()
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="CrystalMedia.py",
-        description="Launch CrystalMedia glass GUI (default).",
     )
     parser.add_argument(
         "--terminal",
