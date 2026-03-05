@@ -1,0 +1,4 @@
+include README.md LICENSE
+include CrystalMedia.py
+recursive-include vendor/exportify *
+recursive-include crystalmedia/vendor/exportify *
