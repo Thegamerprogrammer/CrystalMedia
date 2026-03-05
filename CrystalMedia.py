@@ -928,31 +928,31 @@ def _playlist_display_name_from_url(url: str) -> str:
     return _playlist_name_from_url(url)
 
 
-def _find_exportify_csv(playlist_name: str):
-    candidates = []
-    roots = [Path.cwd() / "csv"]
-    needle = playlist_name.lower().strip()
-    for root in roots:
-        if not root.exists():
-            continue
-        for path in root.glob("*.csv"):
-            name = path.name.lower()
-            if needle and needle in name:
-                candidates.append(path)
-    if candidates:
-        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        return candidates[0]
+def _normalize_playlist_name(value: str) -> str:
+    lowered = value.lower().strip()
+    cleaned = re.sub(r"[^a-z0-9]+", "", lowered)
+    return cleaned
 
-    # fallback to any recent csv
-    any_csv = []
-    for root in roots:
-        if not root.exists():
-            continue
-        any_csv.extend(root.glob("*.csv"))
-    if any_csv:
-        any_csv.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        return any_csv[0]
-    return None
+
+def _find_exportify_csv(playlist_name: str):
+    csv_root = Path.cwd() / "csv"
+    if not csv_root.exists():
+        return None
+
+    files = [p for p in csv_root.glob("*.csv") if p.is_file()]
+    if not files:
+        return None
+
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    needle = _normalize_playlist_name(playlist_name)
+    if needle:
+        for path in files:
+            if needle in _normalize_playlist_name(path.stem):
+                return path
+
+    # fallback: newest CSV in ./csv
+    return files[0]
 
 
 def _queries_from_exportify_csv(csv_path: Path, max_tracks: int = 300):
@@ -976,37 +976,35 @@ def _spotify_exportify_queries_interactive(url: str, wait_seconds: int = 180):
     console.print(Text("Exportify is the primary metadata source for Spotify playlists.", style=COL_MENU))
     console.print(Text("1) Login/auth at Exportify in your browser", style=COL_MENU))
     console.print(Text("2) Export your playlist to CSV", style=COL_MENU))
-    console.print(Text("3) Save CSV, then return here", style=COL_MENU))
+    console.print(Text("3) Save CSV into ./csv, then continue", style=COL_MENU))
+
+    csv_dir = Path.cwd() / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+
+    default_name = _playlist_display_name_from_url(url)
+    console.print(Text(f"Playlist from link: {default_name}", style=COL_ACC))
+    console.print(Text(f"CSV directory: {csv_dir.resolve()}", style=COL_MENU))
 
     try:
         webbrowser.open("https://watsonbox.github.io/exportify/")
     except Exception:
         console.print(Text("Could not auto-open browser. Open https://watsonbox.github.io/exportify/ manually.", style=COL_WARN))
 
-    csv_dir = Path.cwd() / "csv"
-    csv_dir.mkdir(parents=True, exist_ok=True)
-    default_name = _playlist_display_name_from_url(url)
-    console.print(Text(f"CSV directory: {csv_dir.resolve()}", style=COL_MENU))
-    playlist_name = console.input(Text(f"Playlist name (auto from link) [{default_name}] → ", style=COL_ACC)).strip() or default_name
-
-    csv_input = console.input(Text("CSV file path (inside ./csv, Enter = auto-detect/poll) → ", style=COL_ACC)).strip()
+    csv_input = console.input(Text("CSV filename in ./csv (Enter = auto-detect latest) → ", style=COL_ACC)).strip()
     if csv_input:
-        csv_path = Path(csv_input).expanduser()
-        if not csv_path.is_absolute():
-            csv_path = (Path.cwd() / "csv" / csv_path).resolve()
-        allowed_root = (Path.cwd() / "csv").resolve()
-        if not str(csv_path).startswith(str(allowed_root)):
-            console.print(Text(f"CSV must be inside: {allowed_root}", style=COL_ERR))
+        csv_path = (csv_dir / csv_input).resolve()
+        if not str(csv_path).startswith(str(csv_dir.resolve())):
+            console.print(Text(f"CSV must be inside: {csv_dir.resolve()}", style=COL_ERR))
             return []
         if not csv_path.exists():
             console.print(Text(f"CSV not found: {csv_path}", style=COL_ERR))
             return []
         return _queries_from_exportify_csv(csv_path)
 
-    # Auto-detect mode with polling so user can export then return without getting 'stuck'.
+    # No explicit filename: keep checking newest file until timeout.
     remaining = max(wait_seconds, 10)
     while remaining > 0:
-        guessed_csv = _find_exportify_csv(playlist_name)
+        guessed_csv = _find_exportify_csv(default_name)
         if guessed_csv and guessed_csv.exists():
             console.print(Text(f"Detected Exportify CSV: {guessed_csv}", style=COL_GOOD))
             try:
@@ -1015,11 +1013,11 @@ def _spotify_exportify_queries_interactive(url: str, wait_seconds: int = 180):
                 console.print(Text(f"Failed to parse CSV: {str(e)}", style=COL_ERR))
                 return []
         if remaining % 10 == 0:
-            console.print(Text(f"Waiting for Exportify CSV... {remaining}s", style=COL_MENU))
+            console.print(Text(f"Waiting for CSV in ./csv ... {remaining}s", style=COL_MENU))
         time.sleep(1)
         remaining -= 1
 
-    console.print(Text("Timed out waiting for Exportify CSV export.", style=COL_WARN))
+    console.print(Text("Timed out waiting for CSV in ./csv.", style=COL_WARN))
     return []
 
 
