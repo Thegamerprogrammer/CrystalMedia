@@ -16,7 +16,8 @@ dependencies = [
   "yt-dlp[default,curl-cffi]",
   "spotdl",
   "rich",
-  "pyfiglet"
+  "pyfiglet",
+  "pywebview"
 ]
 keywords = ["youtube", "spotify", "downloader", "cli", "yt-dlp"]
 classifiers = [
@@ -34,6 +35,7 @@ Repository = "https://github.com/Thegamerprogrammer/CrystalMedia"
 
 [project.scripts]
 crystalmedia = "crystalmedia.cli:main"
+crystalmedia-gui = "crystalmedia.gui:launch_gui"
 
 [tool.setuptools]
 include-package-data = true
@@ -44,4 +46,4 @@ where = ["."]
 include = ["crystalmedia*"]
 
 [tool.setuptools.package-data]
-crystalmedia = ["vendor/exportify/*"]
+crystalmedia = ["vendor/exportify/*", "webui/*"]

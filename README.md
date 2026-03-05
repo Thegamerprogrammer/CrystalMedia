@@ -27,6 +27,8 @@
 # From PyPI (recommended)
 pip install crystalmedia
 crystalmedia
+# Launch glass GUI (pywebview)
+crystalmedia-gui
 
 # From source
 git clone https://github.com/Thegamerprogrammer/CrystalMedia.git
@@ -39,6 +41,16 @@ On first launch, CrystalMedia runs a dependency preflight/status check and self-
 
 ---
 
+
+
+## 🧊 Glass GUI (PyWebView)
+
+CrystalMedia now includes a **glassmorphism GUI shell** powered by `pywebview`:
+
+- Launch with: `crystalmedia-gui`
+- Uses a 3-column layout (actions / status / dotted logs column)
+- Can ask for dependency auto-install from the GUI and stream install logs live
+- Can run the classic CLI flow in a background process while logs stream to the GUI panel
 
 ## 🧪 Interactive README + Full Visual Walkthrough
 

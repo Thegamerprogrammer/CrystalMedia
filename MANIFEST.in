@@ -3,3 +3,4 @@ include CrystalMedia.py
 recursive-include vendor/exportify *
 recursive-include crystalmedia/vendor/exportify *
 recursive-include docs *.html *.svg
+recursive-include crystalmedia/webui *
