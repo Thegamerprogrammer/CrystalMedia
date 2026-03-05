@@ -26,6 +26,8 @@ import tarfile
 import urllib.request
 import html
 import json
+import csv
+import webbrowser
 from datetime import datetime
 from importlib.metadata import version as pkg_version, PackageNotFoundError
 
@@ -908,6 +910,86 @@ def _spotify_oembed_query(url: str) -> str:
     return query
 
 
+def _playlist_name_from_url(url: str) -> str:
+    m = re.search(r"/playlist/([A-Za-z0-9]+)", url)
+    return m.group(1) if m else "playlist"
+
+
+def _find_exportify_csv(playlist_name: str):
+    candidates = []
+    roots = [Path.cwd(), Path.home() / "Downloads"]
+    needle = playlist_name.lower().strip()
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in root.glob("*.csv"):
+            name = path.name.lower()
+            if needle and needle in name:
+                candidates.append(path)
+    if candidates:
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return candidates[0]
+
+    # fallback to any recent csv
+    any_csv = []
+    for root in roots:
+        if not root.exists():
+            continue
+        any_csv.extend(root.glob("*.csv"))
+    if any_csv:
+        any_csv.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return any_csv[0]
+    return None
+
+
+def _queries_from_exportify_csv(csv_path: Path, max_tracks: int = 300):
+    queries = []
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            title = (row.get("Track Name") or row.get("track_name") or "").strip()
+            artists = (row.get("Artist Name(s)") or row.get("artist_names") or row.get("Artist Name") or "").strip()
+            if title:
+                query = f"{title} {artists}".strip()
+                if query and query not in queries:
+                    queries.append(query)
+            if len(queries) >= max_tracks:
+                break
+    return queries
+
+
+def _spotify_exportify_queries_interactive(url: str, progress_logger: FixedProgressLogger):
+    console.print(Text("Spotify playlist helper (Exportify CSV)", style=COL_TITLE))
+    console.print(Text("1) Login/auth at Exportify in your browser", style=COL_MENU))
+    console.print(Text("2) Export your playlist to CSV", style=COL_MENU))
+    console.print(Text("3) Paste CSV path (or press Enter for auto-detect)", style=COL_MENU))
+
+    try:
+        webbrowser.open("https://watsonbox.github.io/exportify/")
+    except Exception:
+        pass
+
+    default_name = _playlist_name_from_url(url)
+    playlist_name = console.input(Text(f"Playlist name (for auto-detect) [{default_name}] → ", style=COL_ACC)).strip() or default_name
+    guessed_csv = _find_exportify_csv(playlist_name)
+    if guessed_csv:
+        progress_logger.add_log(f"Auto-detected CSV: {guessed_csv}", "info")
+
+    csv_input = console.input(Text("CSV path (Enter = use auto-detected) → ", style=COL_ACC)).strip()
+    csv_path = Path(csv_input).expanduser() if csv_input else guessed_csv
+    if not csv_path or not csv_path.exists():
+        progress_logger.add_log("No valid Exportify CSV found.", "warning")
+        return []
+
+    try:
+        queries = _queries_from_exportify_csv(csv_path)
+        progress_logger.add_log(f"Loaded {len(queries)} tracks from Exportify CSV", "success")
+        return queries
+    except Exception as e:
+        progress_logger.add_log(f"Failed to parse Exportify CSV: {str(e)[:120]}", "error")
+        return []
+
+
 def _resolve_spotify_url(url: str) -> str:
     """Follow Spotify share redirects and return canonical open.spotify URL when possible."""
     try:
@@ -1068,7 +1150,12 @@ def download_spotify(url: str, is_playlist: bool) -> None:
     resolved_url = _resolve_spotify_url(url)
     try:
         if is_playlist or "/playlist/" in resolved_url or "/album/" in resolved_url:
-            queries = _spotify_page_queries(resolved_url)
+            use_exportify = console.input(Text("Use Exportify CSV for playlist metadata? [Y/n] → ", style=COL_ACC)).strip().lower()
+            if use_exportify in ("", "y", "yes"):
+                queries = _spotify_exportify_queries_interactive(resolved_url, progress_logger)
+            if not queries:
+                progress_logger.add_log("Falling back to direct Spotify page scraping...", "warning")
+                queries = _spotify_page_queries(resolved_url)
         else:
             q = _spotify_oembed_query(resolved_url)
             if q:
