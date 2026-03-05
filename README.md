@@ -141,6 +141,8 @@ Use responsibly and only with content you are authorized to download.
 
 ---
 
-## 🤝 Contributing
+- Python 3.8+
+- Internet access
+- FFmpeg (the app can help bootstrap it when missing)
 
 PRs are welcome for UI polish, reliability improvements, and Spotify-mode recovery when upstream ecosystem changes stabilize.

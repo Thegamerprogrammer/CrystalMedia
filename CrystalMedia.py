@@ -862,6 +862,20 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
         return
 
+    if download_completed:
+        progress_logger.mark_complete("Download complete!")
+        if final_path:
+            progress_logger.add_log(f"✓ Final file: {final_path}", "success")
+        progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
+        if hasattr(progress_logger, "wait_for_continue"):
+            progress_logger.wait_for_continue("Download success", 30)
+        progress_logger.stop()
+        if final_path:
+            console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
+        else:
+            console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
+        return
+
     progress_logger.add_log("Maximum retries reached", "error")
     progress_logger.stop()
     console.print(Text("Maximum retries reached. Check connection or try again later.", style=COL_ERR))
