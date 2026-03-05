@@ -954,36 +954,47 @@ def _queries_from_exportify_csv(csv_path: Path, max_tracks: int = 300):
     return queries
 
 
-def _spotify_exportify_queries_interactive(url: str, progress_logger: FixedProgressLogger):
+def _spotify_exportify_queries_interactive(url: str, wait_seconds: int = 180):
     console.print(Text("Spotify playlist helper (Exportify CSV)", style=COL_TITLE))
+    console.print(Text("Exportify is the primary metadata source for Spotify playlists.", style=COL_MENU))
     console.print(Text("1) Login/auth at Exportify in your browser", style=COL_MENU))
     console.print(Text("2) Export your playlist to CSV", style=COL_MENU))
-    console.print(Text("3) Paste CSV path (or press Enter for auto-detect)", style=COL_MENU))
+    console.print(Text("3) Save CSV, then return here", style=COL_MENU))
 
     try:
         webbrowser.open("https://watsonbox.github.io/exportify/")
     except Exception:
-        pass
+        console.print(Text("Could not auto-open browser. Open https://watsonbox.github.io/exportify/ manually.", style=COL_WARN))
 
     default_name = _playlist_name_from_url(url)
     playlist_name = console.input(Text(f"Playlist name (for auto-detect) [{default_name}] → ", style=COL_ACC)).strip() or default_name
-    guessed_csv = _find_exportify_csv(playlist_name)
-    if guessed_csv:
-        progress_logger.add_log(f"Auto-detected CSV: {guessed_csv}", "info")
 
-    csv_input = console.input(Text("CSV path (Enter = use auto-detected) → ", style=COL_ACC)).strip()
-    csv_path = Path(csv_input).expanduser() if csv_input else guessed_csv
-    if not csv_path or not csv_path.exists():
-        progress_logger.add_log("No valid Exportify CSV found.", "warning")
-        return []
+    csv_input = console.input(Text("CSV path (Enter = auto-detect/poll) → ", style=COL_ACC)).strip()
+    if csv_input:
+        csv_path = Path(csv_input).expanduser()
+        if not csv_path.exists():
+            console.print(Text(f"CSV not found: {csv_path}", style=COL_ERR))
+            return []
+        return _queries_from_exportify_csv(csv_path)
 
-    try:
-        queries = _queries_from_exportify_csv(csv_path)
-        progress_logger.add_log(f"Loaded {len(queries)} tracks from Exportify CSV", "success")
-        return queries
-    except Exception as e:
-        progress_logger.add_log(f"Failed to parse Exportify CSV: {str(e)[:120]}", "error")
-        return []
+    # Auto-detect mode with polling so user can export then return without getting 'stuck'.
+    remaining = max(wait_seconds, 10)
+    while remaining > 0:
+        guessed_csv = _find_exportify_csv(playlist_name)
+        if guessed_csv and guessed_csv.exists():
+            console.print(Text(f"Detected Exportify CSV: {guessed_csv}", style=COL_GOOD))
+            try:
+                return _queries_from_exportify_csv(guessed_csv)
+            except Exception as e:
+                console.print(Text(f"Failed to parse CSV: {str(e)}", style=COL_ERR))
+                return []
+        if remaining % 10 == 0:
+            console.print(Text(f"Waiting for Exportify CSV... {remaining}s", style=COL_MENU))
+        time.sleep(1)
+        remaining -= 1
+
+    console.print(Text("Timed out waiting for Exportify CSV export.", style=COL_WARN))
+    return []
 
 
 def _resolve_spotify_url(url: str) -> str:
@@ -1136,31 +1147,32 @@ def download_spotify(url: str, is_playlist: bool) -> None:
     target_dir = DOWNLOADS_ROOT / "SPOTIFY" / subfolder
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    mode = "Playlist" if is_playlist else "Single Item"
-    progress_header = build_download_header("Spotify fallback", mode, "audio", target_dir)
-    progress_logger = FixedProgressLogger(console, progress_header)
-    progress_logger.start()
-    progress_logger.add_log("Spotify downloader (no-premium fallback mode)", "info")
-
-    queries = []
     resolved_url = _resolve_spotify_url(url)
+    queries = []
+
     try:
         if is_playlist or "/playlist/" in resolved_url or "/album/" in resolved_url:
-            use_exportify = console.input(Text("Use Exportify CSV for playlist metadata? [Y/n] → ", style=COL_ACC)).strip().lower()
-            if use_exportify in ("", "y", "yes"):
-                queries = _spotify_exportify_queries_interactive(resolved_url, progress_logger)
+            # Exportify is the primary path for playlist metadata.
+            queries = _spotify_exportify_queries_interactive(resolved_url)
             if not queries:
-                progress_logger.add_log("Falling back to direct Spotify page scraping...", "warning")
+                console.print(Text("Exportify produced no tracks; trying direct Spotify scrape fallback...", style=COL_WARN))
                 queries = _spotify_page_queries(resolved_url)
         else:
             q = _spotify_oembed_query(resolved_url)
             if q:
                 queries = [q]
     except Exception as e:
-        progress_logger.add_log(f"Metadata parsing fallback triggered: {str(e)[:120]}", "warning")
+        console.print(Text(f"Metadata parsing fallback triggered: {str(e)[:120]}", style=COL_WARN))
+
+    mode = "Playlist" if is_playlist else "Single Item"
+    progress_header = build_download_header("Spotify fallback", mode, "audio", target_dir)
+    progress_logger = FixedProgressLogger(console, progress_header)
+    progress_logger.start()
+    progress_logger.add_log("Spotify downloader (no-premium fallback mode)", "info")
 
     if queries:
         try:
+            progress_logger.add_log(f"Loaded {len(queries)} metadata query item(s)", "info")
             downloaded = _download_spotify_queries_with_ytdlp(queries, target_dir, progress_logger)
             progress_logger.mark_complete(f"Downloaded {downloaded} track(s)!")
             progress_logger.add_log(f"✓ Downloaded {downloaded} track(s) → {target_dir}", "success")
@@ -1172,10 +1184,9 @@ def download_spotify(url: str, is_playlist: bool) -> None:
             progress_logger.add_log(f"yt-dlp Spotify fallback failed: {str(e)}", "error")
 
     progress_logger.add_log("Could not parse playable track list from Spotify URL.", "error")
-    progress_logger.add_log("Open a public Spotify track/playlist URL and try again.", "warning")
-    progress_logger.add_log("(Legacy spotdl fallback disabled: requires private client_id/client_secret.)", "warning")
+    progress_logger.add_log("Export playlist from https://watsonbox.github.io/exportify/ and retry with CSV.", "warning")
     progress_logger.stop()
-    console.print(Text("Spotify metadata parsing failed for this URL. Use a public open.spotify.com track/playlist link.", style=COL_ERR))
+    console.print(Text("Spotify metadata parsing failed for this URL. Export CSV via Exportify and retry.", style=COL_ERR))
     pause_for_reading("Spotify metadata parse failed — review above", 15)
 
 
