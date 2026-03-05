@@ -28,7 +28,7 @@ cd CrystalMedia
 python CrystalMedia.py
 ```
 
-On first launch, CrystalMedia can prompt to install dependencies (`yt-dlp`, `rich`, `pyfiglet`, etc.) and bootstrap download folders automatically.
+On first launch, CrystalMedia runs a PyPI preflight to check and upgrade Python tooling (`yt-dlp`, `spotdl`, `rich`, `pyfiglet`) and then performs dependency healing/bootstrap steps.
 
 ---
 
@@ -42,6 +42,7 @@ When the app starts, the flow is designed to feel game-like and guided:
    - Single item or playlist
    - URL
    - MP4 quality or MP3 bitrate
+   - JavaScript runtime preference (Auto / Deno-first / Node-first)
 4. **Live UI kicks in**:
    - Header panel with current context
    - `Progress` panel (single progress bar)
@@ -141,8 +142,6 @@ Use responsibly and only with content you are authorized to download.
 
 ---
 
-- Python 3.8+
-- Internet access
-- FFmpeg (the app can help bootstrap it when missing)
+---
 
 PRs are welcome for UI polish, reliability improvements, and Spotify-mode recovery when upstream ecosystem changes stabilize.

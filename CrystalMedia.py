@@ -27,6 +27,7 @@ import urllib.request
 import html
 import json
 from datetime import datetime
+from importlib.metadata import version as pkg_version, PackageNotFoundError
 
 
 APP_ROOT = Path("CrystalMedia")
@@ -81,8 +82,53 @@ def print_dependency_notice():
     print("Linux/macOS PATH counterpart: ~/.local/bin and shell profile export PATH updates.")
 
 
+
+
+def _fetch_pypi_version(package_name: str):
+    url = f"https://pypi.org/pypi/{package_name}/json"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        return payload.get("info", {}).get("version")
+    except Exception:
+        return None
+
+
+def _installed_python_package_version(package_name: str):
+    try:
+        return pkg_version(package_name)
+    except PackageNotFoundError:
+        return None
+    except Exception:
+        return None
+
+
+def preflight_sync_python_tools():
+    """Check PyPI and proactively upgrade key Python tools before healing starts."""
+    package_map = {
+        "yt-dlp": "yt-dlp[default,curl-cffi]",
+        "spotdl": "spotdl",
+        "rich": "rich",
+        "pyfiglet": "pyfiglet",
+    }
+    print("\nCrystalMedia PyPI preflight: checking latest package versions...")
+    for pkg_name, pip_target in package_map.items():
+        installed = _installed_python_package_version(pkg_name)
+        latest = _fetch_pypi_version(pkg_name)
+        if latest is None:
+            print(f" - {pkg_name}: could not query PyPI; attempting upgrade anyway.")
+            subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", pip_target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            continue
+
+        if installed != latest:
+            print(f" - {pkg_name}: {installed or 'not installed'} -> {latest}; upgrading...")
+            subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", pip_target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            print(f" - {pkg_name}: already latest ({latest}).")
+
 _ensure_app_layout()
 check_log_rotation()
+preflight_sync_python_tools()
 print_dependency_notice()
 log_runtime("Startup: dependency preflight shown.")
 
@@ -199,16 +245,25 @@ elif platform.system() in ("Linux", "Darwin"):
 
 # Deno
 if not command_exists("deno"):
-    if ask_install("Deno (yt-dlp needs it for YouTube JS challenges)"):
-        print("Installing Deno...")
-        if platform.system() == "Windows":
-            run_quiet(["powershell", "-Command", "irm https://deno.land/install.ps1 | iex"])
-        else:
-            run_shell_quiet("curl -fsSL https://deno.land/install.sh | sh")
-        if not command_exists("deno"):
-            print("Deno install failed. Go to https://deno.com manually.")
+    print("Deno missing — auto-installing...")
+    if platform.system() == "Windows":
+        run_quiet(["powershell", "-Command", "irm https://deno.land/install.ps1 | iex"])
     else:
-        print("Deno skipped — YouTube may choke on protected videos.")
+        run_shell_quiet("curl -fsSL https://deno.land/install.sh | sh")
+    if not command_exists("deno"):
+        print("Deno install failed. Go to https://deno.com manually.")
+
+# Always try to upgrade Deno when available
+if command_exists("deno"):
+    run_quiet(["deno", "upgrade"])
+
+# Node.js (alternate JS runtime for yt-dlp challenge solving)
+if not (command_exists("node") or command_exists("nodejs")):
+    print("Node.js missing — auto-installing with OS-aware package manager...")
+    ok = install_node_runtime_os_aware()
+    if not ok:
+        print("Node.js install helper could not complete automatically.")
+        print("Install manually: https://nodejs.org/en/download")
 
 # Node.js (alternate JS runtime for yt-dlp challenge solving)
 if not (command_exists("node") or command_exists("nodejs")):
@@ -704,6 +759,33 @@ def select_mp4_quality() -> str:
     if choice == "3": return "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
     return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
+
+
+def select_js_runtime_preference() -> str:
+    console.print(Text("JavaScript Runtime Preference", style=COL_TITLE))
+    console.print(Text(" 1. Auto fallback (recommended)", style=COL_MENU))
+    console.print(Text(" 2. Prefer Deno first", style=COL_MENU))
+    console.print(Text(" 3. Prefer Node first", style=COL_MENU))
+    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "1"
+    return {"1": "auto", "2": "deno", "3": "node"}.get(choice, "auto")
+
+
+def build_js_runtime_profiles(preference: str):
+    installed = available_js_runtimes()
+    if not installed:
+        return [[]]
+    deno_first = [["deno"], ["node"], ["nodejs"], ["deno", "node"], ["node", "deno"]]
+    node_first = [["node"], ["nodejs"], ["deno"], ["node", "deno"], ["deno", "node"]]
+    auto_order = [["node"], ["nodejs"], ["deno"], ["node", "deno"], ["deno", "node"]]
+    source = auto_order if preference == "auto" else (deno_first if preference == "deno" else node_first)
+
+    profiles = []
+    for profile in source:
+        filtered = [r for r in profile if r in installed]
+        if filtered and filtered not in profiles:
+            profiles.append(filtered)
+    return profiles or [installed]
+
 def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     try:
         with YoutubeDL({"quiet": True}) as ydl:
@@ -789,12 +871,14 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     final_path = None
     download_completed = False
 
-    runtime_candidates = ["deno", "node", "deno,node", "node,deno"]
-    for runtime_try in range(4):
-        runtime_value = runtime_candidates[runtime_try]
-        runtime_list = [x.strip() for x in runtime_value.split(",") if x.strip()]
+    runtime_preference = select_js_runtime_preference()
+    runtime_profiles = build_js_runtime_profiles(runtime_preference)
+
+    for runtime_try, runtime_list in enumerate(runtime_profiles, start=1):
+        runtime_value = ",".join(runtime_list)
         options["js_runtimes"] = runtime_list
-        progress_logger.add_log(f"JS runtime try {runtime_try + 1}/4 → {runtime_value}", "info")
+        progress_logger.add_log(f"JS runtime try {runtime_try}/{len(runtime_profiles)} → {runtime_value}", "info")
+        console.print(Text(f"Trying JS runtime profile: {runtime_value}", style=COL_ACC))
 
         while retry_count < max_retries:
             try:
@@ -820,7 +904,8 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                     options["http_headers"]["User-Agent"] = random.choice(USER_AGENTS)
                     progress_logger.add_log("Rate limit detected. Rotating user-agent...", "warning")
                 if any(k in err_text.lower() for k in ["jsc", "challenge", "signature", "deno", "node"]):
-                    progress_logger.add_log("JS challenge/runtime issue detected; switching runtime profile...", "warning")
+                    progress_logger.add_log(f"Runtime {runtime_value} failed; falling back to next runtime profile.", "warning")
+                    console.print(Text(f"Runtime {runtime_value} failed; falling back to next runtime profile.", style=COL_WARN))
                     break
                 time.sleep(random.uniform(4, 10))
 
@@ -829,7 +914,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
 
     if not download_completed:
         progress_logger.stop()
-        console.print(Text("JS runtime retries exhausted. Falling back to noisy yt-dlp output...", style=COL_WARN))
+        console.print(Text("All selected JS runtimes failed. Switching to fallback Z (noisy yt-dlp output)...", style=COL_WARN))
         noisy_options = dict(options)
         noisy_options["quiet"] = False
         noisy_options["noprogress"] = False
@@ -855,20 +940,6 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             progress_logger.add_log(f"✓ Final file: {final_path}", "success")
         progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
         progress_logger.wait_for_continue("Download success", 30)
-        progress_logger.stop()
-        if final_path:
-            console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
-        else:
-            console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
-        return
-
-    if download_completed:
-        progress_logger.mark_complete("Download complete!")
-        if final_path:
-            progress_logger.add_log(f"✓ Final file: {final_path}", "success")
-        progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
-        if hasattr(progress_logger, "wait_for_continue"):
-            progress_logger.wait_for_continue("Download success", 30)
         progress_logger.stop()
         if final_path:
             console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
