@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CrystalMedia Interactive README</title>
+<style>
+body{margin:0;font-family:Inter,Segoe UI,Arial;background:#0b1220;color:#d6e4ff}.wrap{max-width:1100px;margin:20px auto;padding:20px}
+.card{background:#111a2c;border:1px solid #8fb6ff66;border-radius:16px;padding:18px;margin-bottom:16px}
+h1{color:#a5d8ff}.tabs button{background:#1a2846;color:#d6e4ff;border:1px solid #8fb6ff66;padding:10px 12px;border-radius:10px;margin:4px;cursor:pointer}
+.tabs button.active{background:#b3e0ff;color:#001018}
+img{width:100%;border-radius:12px;border:1px solid #8fb6ff66}
+.badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#1a2846;border:1px solid #8fb6ff66;margin-right:8px}
+.kbd{border:1px solid #8fb6ff66;border-bottom-width:3px;border-radius:6px;padding:2px 6px;background:#0b1220}
+@keyframes glow{50%{box-shadow:0 0 28px #7cb8ff55}} .pulse{animation:glow 2s infinite}
+</style></head><body><div class="wrap">
+<div class="card pulse"><h1>CrystalMedia v4 — Interactive README</h1>
+<span class="badge">PyPI ready</span><span class="badge">CLI: crystalmedia</span><span class="badge">Spotify Exportify mode</span>
+<p>Walkthrough, troubleshooting, and visual flow in one place.</p></div>
+<div class="card"><div class="tabs" id="tabs"></div><img id="frame" src="media/01-splash.svg" alt="frame"></div>
+<div class="card"><h2>Quick controls</h2><p><span class="kbd">↑</span> <span class="kbd">↓</span> navigate · <span class="kbd">Enter</span> select · <span class="kbd">Ctrl</span>+<span class="kbd">C</span> safe interrupt</p>
+<h2>If stuck</h2><ul><li>Age-restricted YouTube: login to browser profile and retry.</li><li>Spotify playlist: export CSV to <code>./csv</code>.</li><li>Missing deps: install via pip, then rerun CLI.</li></ul></div>
+</div>
+<script>
+const frames=[
+['Splash','media/01-splash.svg'],['Main Menu','media/02-main-menu.svg'],['YouTube Flow','media/03-youtube-flow.svg'],['Spotify Exportify','media/04-spotify-exportify.svg'],['Stuck Help','media/05-stuck-help.svg'],['Success','media/06-success.svg']
+];
+const tabs=document.getElementById('tabs'); const img=document.getElementById('frame');
+frames.forEach((f,i)=>{const b=document.createElement('button'); b.textContent=f[0]; if(i===0)b.className='active'; b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); img.src=f[1];}; tabs.appendChild(b);});
+</script></body></html>

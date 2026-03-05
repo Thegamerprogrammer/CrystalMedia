@@ -10,6 +10,7 @@
 ## ⚡ Jump To
 
 - [🚀 30-Second Quick Start](#-30-second-quick-start)
+- [🧪 Interactive README + Full Visual Walkthrough](#-interactive-readme--full-visual-walkthrough)
 - [🎮 Interactive Walkthrough](#-interactive-walkthrough)
 - [⌨️ Controls Cheatsheet](#️-controls-cheatsheet)
 - [🧠 Download Modes](#-download-modes)
@@ -23,12 +24,46 @@
 ## 🚀 30-Second Quick Start
 
 ```bash
+# From PyPI (recommended)
+pip install crystalmedia
+crystalmedia
+
+# From source
 git clone https://github.com/Thegamerprogrammer/CrystalMedia.git
 cd CrystalMedia
-python CrystalMedia.py
+pip install .
+crystalmedia
 ```
 
-On first launch, CrystalMedia runs a PyPI preflight to check and upgrade Python tooling (`yt-dlp`, `spotdl`, `rich`, `pyfiglet`) and then performs dependency healing/bootstrap steps.
+On first launch, CrystalMedia runs a dependency preflight/status check and self-healing diagnostics. Runtime auto-install of dependencies is disabled for packaging safety; install/update dependencies through pip.
+
+---
+
+
+## 🧪 Interactive README + Full Visual Walkthrough
+
+Before install, you can explore a clickable mini site + full visual flow:
+
+- **Interactive README:** `docs/interactive-readme.html`
+- **Pre-install demo:** `docs/interactive-demo.html`
+- **PyPI package page:** https://pypi.org/project/crystalmedia/
+
+> On Windows, double-click either HTML file in `docs\` to open it instantly.
+
+### Full UI Walkthrough Screenshots
+
+![01 Splash](docs/media/01-splash.svg)
+![02 Main Menu](docs/media/02-main-menu.svg)
+![03 YouTube Flow](docs/media/03-youtube-flow.svg)
+![04 Spotify Exportify](docs/media/04-spotify-exportify.svg)
+![05 Stuck Help](docs/media/05-stuck-help.svg)
+![06 Success](docs/media/06-success.svg)
+
+### What to do when stuck
+
+- **Age-restricted YouTube:** sign in to YouTube in your regular browser profile, then retry.
+- **Spotify playlist stuck waiting for CSV:** export playlist in Exportify and save `.csv` into `./csv`.
+- **Missing dependencies:** install with pip (`yt-dlp`, `rich`, `pyfiglet`, `spotdl`) and rerun.
 
 ---
 
@@ -74,8 +109,22 @@ When the app starts, the flow is designed to feel game-like and guided:
 - Single or playlist
 - Audio extraction postprocessing
 
-### 🎧 Spotify (Fallback Mode)
-Spotify links are handled with a resilient fallback: CrystalMedia derives track queries from Spotify metadata and downloads via `yt-dlp` search. If that path fails, it attempts legacy `spotdl` mode.
+### 🎧 Spotify (Exportify-first Playlist Mode)
+- **Single track**: reads Spotify metadata and downloads via `yt-dlp` search (with automatic browser-cookie fallback for age-restricted YouTube matches).
+- **Playlist/album**: **Exportify CSV is the primary path**.
+  1. Open your playlist URL in CrystalMedia.
+  2. CrystalMedia opens `vendor/exportify/index.html` helper + Exportify in browser.
+  3. Export the **same playlist** and save CSV in `./csv` (next to `CrystalMedia.py`).
+  4. Filename matching is used as a hint; CrystalMedia will still try the newest CSV if names do not match.
+  5. CrystalMedia reads that CSV and downloads each song via `yt-dlp` search.
+
+If no CSV is found, CrystalMedia attempts direct Spotify page scraping fallback.
+
+
+### 🍪 Age-restricted YouTube matches (Spotify fallback)
+- CrystalMedia now auto-tries `yt-dlp --cookies-from-browser` profiles when YouTube returns age/sign-in restrictions.
+- For best results, sign in to YouTube in your normal (non-incognito) browser profile first.
+- If browser-cookie extraction still fails, export a Netscape cookies file and pass it manually in yt-dlp workflows.
 
 ---
 
@@ -145,3 +194,10 @@ Use responsibly and only with content you are authorized to download.
 ---
 
 PRs are welcome for UI polish, reliability improvements, and Spotify-mode recovery when upstream ecosystem changes stabilize.
+
+
+## 🧾 Exportify CSV (Playlist) Quick Notes
+
+- CSV files **must be in** `./csv` (relative to where you run `CrystalMedia.py`).
+- Leave filename blank in prompt to auto-detect latest CSV in `./csv` that matches playlist name.
+- Playlist title is auto-derived from the Spotify playlist link and used for fuzzy CSV matching.
