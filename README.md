@@ -28,7 +28,7 @@ cd CrystalMedia
 python CrystalMedia.py
 ```
 
-On first launch, CrystalMedia runs a PyPI preflight to check and upgrade Python tooling (`yt-dlp`, `spotdl`, `rich`, `pyfiglet`) and then performs dependency healing/bootstrap steps.
+On first launch, CrystalMedia runs a PyPI preflight to check and upgrade Python tooling (`yt-dlp`, `spotdl`, `rich`, `pyfiglet`), auto-installs `vendor/exportify/requirements.txt`, and then performs dependency healing/bootstrap steps.
 
 ---
 
@@ -74,8 +74,22 @@ When the app starts, the flow is designed to feel game-like and guided:
 - Single or playlist
 - Audio extraction postprocessing
 
-### 🎧 Spotify (Fallback Mode)
-Spotify links are handled with a resilient fallback: CrystalMedia derives track queries from Spotify metadata and downloads via `yt-dlp` search. If that path fails, it attempts legacy `spotdl` mode.
+### 🎧 Spotify (Exportify-first Playlist Mode)
+- **Single track**: reads Spotify metadata and downloads via `yt-dlp` search (with automatic browser-cookie fallback for age-restricted YouTube matches).
+- **Playlist/album**: **Exportify CSV is the primary path**.
+  1. Open your playlist URL in CrystalMedia.
+  2. CrystalMedia opens `vendor/exportify/index.html` helper + Exportify in browser.
+  3. Export the **same playlist** and save CSV in `./csv` (next to `CrystalMedia.py`).
+  4. Filename matching is used as a hint; CrystalMedia will still try the newest CSV if names do not match.
+  5. CrystalMedia reads that CSV and downloads each song via `yt-dlp` search.
+
+If no CSV is found, CrystalMedia attempts direct Spotify page scraping fallback.
+
+
+### 🍪 Age-restricted YouTube matches (Spotify fallback)
+- CrystalMedia now auto-tries `yt-dlp --cookies-from-browser` profiles when YouTube returns age/sign-in restrictions.
+- For best results, sign in to YouTube in your normal (non-incognito) browser profile first.
+- If browser-cookie extraction still fails, export a Netscape cookies file and pass it manually in yt-dlp workflows.
 
 ---
 
@@ -145,3 +159,10 @@ Use responsibly and only with content you are authorized to download.
 ---
 
 PRs are welcome for UI polish, reliability improvements, and Spotify-mode recovery when upstream ecosystem changes stabilize.
+
+
+## 🧾 Exportify CSV (Playlist) Quick Notes
+
+- CSV files **must be in** `./csv` (relative to where you run `CrystalMedia.py`).
+- Leave filename blank in prompt to auto-detect latest CSV in `./csv` that matches playlist name.
+- Playlist title is auto-derived from the Spotify playlist link and used for fuzzy CSV matching.
