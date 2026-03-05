@@ -524,7 +524,7 @@ class FixedProgressLogger:
             self.layout.split_column(
                 Layout(name="header", size=10),
                 Layout(name="progress", size=8),
-                Layout(name="logs", minimum_size=10)
+                Layout(name="logs", size=16)
             )
             self.layout["header"].update(
                 Panel(header_text, border_style=COL_MENU, title="CrystalMedia", title_align="left")
@@ -532,7 +532,7 @@ class FixedProgressLogger:
         else:
             self.layout.split_column(
                 Layout(name="progress", size=8),
-                Layout(name="logs", minimum_size=10)
+                Layout(name="logs", size=16)
             )
         self.progress = Progress(
             SpinnerColumn(),
@@ -543,6 +543,14 @@ class FixedProgressLogger:
         )
         self.task = None
         self.live = Live(self.layout, console=self.console, refresh_per_second=4)
+        self.max_logs = 12
+        self.max_log_width = 110
+        self.layout["progress"].update(self._waiting_panel())
+
+    def _waiting_panel(self):
+        """Render spinner placeholder until progress data arrives."""
+        waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
+        return Panel(waiting_spinner, title="Progress", border_style=COL_MENU, title_align="left")
 
     def add_log(self, msg: str, level: str = "info"):
         """Add message to log panel with color coding"""
@@ -579,7 +587,7 @@ class FixedProgressLogger:
 
     def update_progress(self, percent: float, description: str = "Downloading"):
         """Update progress bar"""
-        if not self.task:
+        if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
 
@@ -594,7 +602,7 @@ class FixedProgressLogger:
         else:
             self.progress.update(self.task, completed=100, description=description)
         self.layout["progress"].update(
-            Panel(self.progress, title="Progress", border_style="green")
+            Panel(self.progress, title="Progress", border_style=COL_MENU, title_align="left")
         )
 
     def start(self):
