@@ -28,7 +28,7 @@ cd CrystalMedia
 python CrystalMedia.py
 ```
 
-On first launch, CrystalMedia runs a PyPI preflight to check and upgrade Python tooling (`yt-dlp`, `spotdl`, `rich`, `pyfiglet`) and then performs dependency healing/bootstrap steps.
+On first launch, CrystalMedia runs a PyPI preflight to check and upgrade Python tooling (`yt-dlp`, `spotdl`, `rich`, `pyfiglet`), auto-installs `vendor/exportify/requirements.txt`, and then performs dependency healing/bootstrap steps.
 
 ---
 
@@ -75,7 +75,7 @@ When the app starts, the flow is designed to feel game-like and guided:
 - Audio extraction postprocessing
 
 ### 🎧 Spotify (Exportify-first Playlist Mode)
-- **Single track**: reads Spotify metadata and downloads via `yt-dlp` search.
+- **Single track**: reads Spotify metadata and downloads via `yt-dlp` search (with automatic browser-cookie fallback for age-restricted YouTube matches).
 - **Playlist/album**: **Exportify CSV is the primary path**.
   1. Open your playlist URL in CrystalMedia.
   2. CrystalMedia opens `vendor/exportify/index.html` helper + Exportify in browser.
@@ -84,6 +84,12 @@ When the app starts, the flow is designed to feel game-like and guided:
   5. CrystalMedia reads that CSV and downloads each song via `yt-dlp` search.
 
 If no CSV is found, CrystalMedia attempts direct Spotify page scraping fallback.
+
+
+### 🍪 Age-restricted YouTube matches (Spotify fallback)
+- CrystalMedia now auto-tries `yt-dlp --cookies-from-browser` profiles when YouTube returns age/sign-in restrictions.
+- For best results, sign in to YouTube in your normal (non-incognito) browser profile first.
+- If browser-cookie extraction still fails, export a Netscape cookies file and pass it manually in yt-dlp workflows.
 
 ---
 

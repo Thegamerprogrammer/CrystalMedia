@@ -47,6 +47,18 @@ def _ensure_app_layout():
     DOWNLOADS_ROOT.mkdir(parents=True, exist_ok=True)
 
 
+def install_exportify_vendor_requirements():
+    """Auto-install Python deps declared by vendor/exportify/requirements.txt."""
+    req_file = Path("vendor") / "exportify" / "requirements.txt"
+    if not req_file.exists():
+        return
+    print(f"Installing Exportify vendor requirements from {req_file}...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "-r", str(req_file)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        print("Exportify vendor requirements install failed; continuing startup.")
+
+
 def _append_file(path: Path, line: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -132,6 +144,7 @@ def preflight_sync_python_tools():
 _ensure_app_layout()
 check_log_rotation()
 preflight_sync_python_tools()
+install_exportify_vendor_requirements()
 print_dependency_notice()
 log_runtime("Startup: dependency preflight shown.")
 
@@ -141,6 +154,18 @@ log_runtime("Startup: dependency preflight shown.")
 def strip_ansi(text: str) -> str:
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     return ansi_escape.sub('', text)
+
+
+def should_suppress_ytdlp_log(msg: str) -> bool:
+    """Hide repetitive yt-dlp authentication/cookie hints from the compact log panel."""
+    clean = strip_ansi(str(msg)).lower()
+    noisy_fragments = (
+        "age-restricted; some formats may be missing without authentication",
+        "--cookies-from-browser or --cookies",
+        "wiki/faq#how-do-i-pass-cookies-to-yt-dlp",
+        "wiki/extractors#exporting-youtube-cookies",
+    )
+    return any(fragment in clean for fragment in noisy_fragments)
 
 # ──────────────────────────────────────────────
 # Self-healing dependency block — runs first
@@ -321,7 +346,7 @@ for pkg in ["rich", "pyfiglet"]:
             run_quiet([sys.executable, "-m", "pip", "install", "--upgrade", pkg])
 
 print("Dependency health check completed. Importing libraries...\n")
-_append_file(DEPS_LOG, f"[{datetime.now().isoformat(timespec='seconds')}] deno={command_exists('deno')} node={command_exists('node') or command_exists('nodejs')} yt-dlp={command_exists('yt-dlp')} ffmpeg={command_exists('ffmpeg')} spotdl={command_exists('spotdl')}")
+_append_file(DEPS_LOG, f"[{datetime.now().isoformat(timespec='seconds')}] deno={command_exists('deno')} node={command_exists('node') or command_exists('nodejs')} yt-dlp={command_exists('yt-dlp')} ffmpeg={command_exists('ffmpeg')} spotdl={command_exists('spotdl')} exportify_req={(Path('vendor') / 'exportify' / 'requirements.txt').exists()}")
 log_runtime("Dependency health check completed.")
 
 # ──────────────────────────────────────────────
@@ -691,6 +716,110 @@ def select_mp4_quality() -> str:
 
 
 
+def is_age_restricted_error(msg: str) -> bool:
+    clean = strip_ansi(str(msg)).lower()
+    keys = (
+        "age-restricted",
+        "confirm your age",
+        "sign in to confirm",
+        "this video may be inappropriate",
+        "login required",
+    )
+    return any(k in clean for k in keys)
+
+
+def _cookie_browser_sources():
+    """Generate yt-dlp cookiesfrombrowser tuples with likely browser/profile combos."""
+    browsers = []
+    try:
+        controller = webbrowser.get()
+        hint = f"{getattr(controller, 'name', '')} {controller}".lower()
+        for b in ("chrome", "chromium", "edge", "firefox", "opera", "brave", "safari", "vivaldi"):
+            if b in hint and b not in browsers:
+                browsers.append(b)
+    except Exception:
+        pass
+
+    system = platform.system()
+    if system == "Windows":
+        ordered = ["edge", "chrome", "firefox", "brave", "opera"]
+        profiles = [None, "Default", "Profile 1", "Profile 2"]
+    elif system == "Darwin":
+        ordered = ["safari", "chrome", "firefox", "edge", "brave"]
+        profiles = [None, "Default", "Profile 1"]
+    else:
+        ordered = ["chrome", "chromium", "firefox", "edge", "brave", "opera"]
+        profiles = [None, "Default", "default"]
+
+    for b in ordered:
+        if b not in browsers:
+            browsers.append(b)
+
+    seen = set()
+    for browser_name in browsers:
+        for profile in profiles:
+            source = (browser_name, None, profile, None)
+            if source not in seen:
+                seen.add(source)
+                yield source
+
+
+def _cookie_source_label(source):
+    browser_name, _, profile, _ = source
+    return f"{browser_name}{f':{profile}' if profile else ''}"
+
+
+def try_ytdlp_with_browser_cookies(url_or_query: str, options: dict, progress_logger, extract_info_mode: bool = False):
+    last_error = "No browser cookie source succeeded."
+    for source in _cookie_browser_sources():
+        cookie_opts = dict(options)
+        cookie_opts["cookiesfrombrowser"] = source
+        label = _cookie_source_label(source)
+        progress_logger.add_log(f"Trying browser cookies fallback via: {label}", "warning")
+        try:
+            with YoutubeDL(cookie_opts) as browser_ydl:
+                if extract_info_mode:
+                    info = browser_ydl.extract_info(url_or_query, download=True)
+                    return True, info, label
+                browser_ydl.download([url_or_query])
+                return True, None, label
+        except Exception as e:
+            last_error = str(e)
+
+    # CLI fallback can work in environments where python-embedded cookie loading fails.
+    for source in _cookie_browser_sources():
+        label = _cookie_source_label(source)
+        browser_name, _, profile, _ = source
+        browser_arg = f"{browser_name}:{profile}" if profile else browser_name
+        progress_logger.add_log(f"Trying yt-dlp CLI cookie fallback via: {label}", "warning")
+        cmd = ["yt-dlp", "--cookies-from-browser", browser_arg, "--skip-download", "--simulate", url_or_query]
+        try:
+            subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            cookie_opts = dict(options)
+            cookie_opts["cookiesfrombrowser"] = source
+            with YoutubeDL(cookie_opts) as browser_ydl:
+                if extract_info_mode:
+                    info = browser_ydl.extract_info(url_or_query, download=True)
+                    return True, info, label
+                browser_ydl.download([url_or_query])
+                return True, None, label
+        except Exception as e:
+            last_error = str(e)
+
+    return False, None, last_error
+
+
+def extract_final_path_from_info(final_info):
+    final_path = None
+    if isinstance(final_info, dict):
+        requested = final_info.get("requested_downloads") or []
+        if requested and isinstance(requested[0], dict):
+            final_path = requested[0].get("filepath")
+        if not final_path:
+            final_path = final_info.get("_filename")
+    return final_path
+
+
 def select_js_runtime_preference() -> str:
     console.print(Text("JavaScript Runtime Preference", style=COL_TITLE))
     console.print(Text(" 1. Auto fallback (recommended)", style=COL_MENU))
@@ -759,6 +888,9 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             clean_msg = strip_ansi(msg)
             lower_msg = clean_msg.lower()
 
+            if should_suppress_ytdlp_log(clean_msg):
+                return
+
             if 'already been downloaded' in lower_msg:
                 self.logger.add_log(clean_msg, "success")
                 self.logger.mark_complete("Download complete (already exists)!")
@@ -777,6 +909,8 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 self.logger.add_log(clean_msg, level)
 
         def debug(self, msg):
+            if should_suppress_ytdlp_log(msg):
+                return
             if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
                 if 'ETA' in msg or '%' in msg:
                     return
@@ -830,12 +964,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 with YoutubeDL(options) as downloader:
                     final_info = downloader.extract_info(url, download=True)
 
-                if isinstance(final_info, dict):
-                    requested = final_info.get("requested_downloads") or []
-                    if requested and isinstance(requested[0], dict):
-                        final_path = requested[0].get("filepath")
-                    if not final_path:
-                        final_path = final_info.get("_filename")
+                final_path = extract_final_path_from_info(final_info)
                 download_completed = True
                 break
             except KeyboardInterrupt:
@@ -845,6 +974,17 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 err_text = str(e)
                 retry_count += 1
                 progress_logger.add_log(f"Attempt {retry_count}/{max_retries} failed: {err_text[:80]}", "warning")
+
+                if is_age_restricted_error(err_text):
+                    progress_logger.add_log("Age-restricted content detected. Attempting browser-cookies fallback.", "warning")
+                    ok, info_with_cookies, browser_or_err = try_ytdlp_with_browser_cookies(url, options, progress_logger, extract_info_mode=True)
+                    if ok:
+                        final_path = extract_final_path_from_info(info_with_cookies)
+                        progress_logger.add_log(f"Cookie fallback succeeded with browser: {browser_or_err}", "success")
+                        download_completed = True
+                        break
+                    progress_logger.add_log(f"Cookie fallback failed: {browser_or_err[:120]}", "warning")
+
                 if any(keyword in err_text.lower() for keyword in ["rate limit", "throttl", "429", "443"]):
                     options["http_headers"]["User-Agent"] = random.choice(USER_AGENTS)
                     progress_logger.add_log("Rate limit detected. Rotating user-agent...", "warning")
@@ -869,12 +1009,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
         try:
             with YoutubeDL(noisy_options) as noisy_downloader:
                 final_info = noisy_downloader.extract_info(url, download=True)
-            if isinstance(final_info, dict):
-                requested = final_info.get("requested_downloads") or []
-                if requested and isinstance(requested[0], dict):
-                    final_path = requested[0].get("filepath")
-                if not final_path:
-                    final_path = final_info.get("_filename")
+            final_path = extract_final_path_from_info(final_info)
             download_completed = True
         except Exception as e:
             console.print(Text(f"Noisy fallback failed: {str(e)}", style=COL_ERR))
@@ -1156,14 +1291,19 @@ def _download_spotify_queries_with_ytdlp(queries, target_dir: Path, progress_log
             self.logger = logger
         def debug(self, msg):
             clean = strip_ansi(str(msg))
+            if should_suppress_ytdlp_log(clean):
+                return
             if '[youtube]' in clean and 'WARNING:' not in clean:
                 self.logger.add_log(clean, 'info')
         def info(self, msg):
             clean = strip_ansi(str(msg))
-            if clean:
+            if clean and not should_suppress_ytdlp_log(clean):
                 self.logger.add_log(clean, 'info')
         def warning(self, msg):
-            self.logger.add_log(strip_ansi(str(msg)), 'warning')
+            clean = strip_ansi(str(msg))
+            if should_suppress_ytdlp_log(clean):
+                return
+            self.logger.add_log(clean, 'warning')
         def error(self, msg):
             self.logger.add_log(strip_ansi(str(msg)), 'error')
 
@@ -1179,16 +1319,38 @@ def _download_spotify_queries_with_ytdlp(queries, target_dir: Path, progress_log
     }
 
     count = 0
+    failed = 0
     total = max(len(queries), 1)
-    with YoutubeDL(ydl_opts) as ydl:
-        for idx, query in enumerate(queries, start=1):
-            progress_logger.add_log(f"[{idx}/{len(queries)}] Spotify fallback search: {query}", "info")
-            progress_logger.update_progress(((idx - 1) / total) * 100, "Searching & downloading")
-            ydl.download([f"ytsearch1:{query}"])
-            count += 1
-            progress_logger.update_progress((idx / total) * 100, "Searching & downloading")
+    for idx, query in enumerate(queries, start=1):
+        progress_logger.add_log(f"[{idx}/{len(queries)}] Spotify fallback search: {query}", "info")
+        progress_logger.update_progress(((idx - 1) / total) * 100, "Searching & downloading")
+        query_ok = False
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.download([f"ytsearch1:{query}"])
+            query_ok = True
+        except Exception as e:
+            err_text = str(e)
+            if is_age_restricted_error(err_text):
+                progress_logger.add_log("Age-restricted result detected. Attempting browser-cookies fallback.", "warning")
+                ok, _, browser_or_err = try_ytdlp_with_browser_cookies(f"ytsearch1:{query}", ydl_opts, progress_logger, extract_info_mode=False)
+                if ok:
+                    progress_logger.add_log(f"Cookie fallback succeeded with browser: {browser_or_err}", "success")
+                    query_ok = True
+                else:
+                    progress_logger.add_log(f"Cookie fallback failed for query: {query}", "warning")
+                    progress_logger.add_log(f"Last cookie error: {browser_or_err[:120]}", "warning")
+            else:
+                progress_logger.add_log(f"Failed query skipped: {query}", "warning")
+                progress_logger.add_log(err_text[:120], "warning")
 
-    return count
+        if query_ok:
+            count += 1
+        else:
+            failed += 1
+        progress_logger.update_progress((idx / total) * 100, "Searching & downloading")
+
+    return count, failed
 
 
 def download_spotify(url: str, is_playlist: bool) -> None:
@@ -1222,17 +1384,20 @@ def download_spotify(url: str, is_playlist: bool) -> None:
     if queries:
         try:
             progress_logger.add_log(f"Loaded {len(queries)} metadata query item(s)", "info")
-            downloaded = _download_spotify_queries_with_ytdlp(queries, target_dir, progress_logger)
-            progress_logger.mark_complete(f"Downloaded {downloaded} track(s)!")
+            downloaded, failed = _download_spotify_queries_with_ytdlp(queries, target_dir, progress_logger)
+            progress_logger.mark_complete(f"Downloaded {downloaded} track(s); skipped {failed}.")
             progress_logger.add_log(f"✓ Downloaded {downloaded} track(s) → {target_dir}", "success")
+            if failed:
+                progress_logger.add_log(f"⚠ Skipped {failed} track(s) that failed extraction.", "warning")
             progress_logger.wait_for_continue("Spotify download success", 30)
             progress_logger.stop()
-            console.print(Text(f"Downloaded {downloaded} track(s) → {target_dir}", style=COL_GOOD))
+            console.print(Text(f"Downloaded {downloaded} track(s) (skipped {failed}) → {target_dir}", style=COL_GOOD))
             return
         except Exception as e:
             progress_logger.add_log(f"yt-dlp Spotify fallback failed: {str(e)}", "error")
 
-    progress_logger.add_log("Could not parse playable track list from Spotify URL.", "error")
+    progress_logger.add_log("Spotify fallback download did not complete.", "error")
+    progress_logger.add_log("If age-restricted tracks fail, log into YouTube in your browser profile and retry.", "warning")
     progress_logger.add_log("Export playlist from https://watsonbox.github.io/exportify/ and retry with CSV.", "warning")
     progress_logger.stop()
     console.print(Text("Spotify metadata parsing failed for this URL. Export CSV via Exportify and retry.", style=COL_ERR))
