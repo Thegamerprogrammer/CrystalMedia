@@ -80,7 +80,7 @@ When the app starts, the flow is designed to feel game-like and guided:
   1. Open your playlist URL in CrystalMedia.
   2. CrystalMedia opens `vendor/exportify/index.html` helper + Exportify in browser.
   3. Export the **same playlist** and save CSV in `./csv` (next to `CrystalMedia.py`).
-  4. Keep the CSV filename containing the playlist name so auto-detect can match it.
+  4. Filename matching is used as a hint; CrystalMedia will still try the newest CSV if names do not match.
   5. CrystalMedia reads that CSV and downloads each song via `yt-dlp` search.
 
 If no CSV is found, CrystalMedia attempts direct Spotify page scraping fallback.

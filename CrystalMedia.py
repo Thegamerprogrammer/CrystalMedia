@@ -1070,6 +1070,11 @@ def _normalize_playlist_name(value: str) -> str:
     return cleaned
 
 
+def _looks_like_spotify_id(value: str) -> bool:
+    value = (value or "").strip()
+    return bool(re.fullmatch(r"[A-Za-z0-9]{22}", value))
+
+
 def _open_exportify_helper_page(playlist_name: str, playlist_url: str):
     helper_page = Path(__file__).parent / "vendor" / "exportify" / "index.html"
     csv_dir = (Path.cwd() / "csv").resolve()
@@ -1085,6 +1090,11 @@ def _open_exportify_helper_page(playlist_name: str, playlist_url: str):
 
 
 def _csv_matches_playlist_name(csv_path: Path, playlist_name: str) -> bool:
+    # If Spotify title lookup fails we may only have the 22-char playlist id.
+    # In that case, don't enforce filename matching because Exportify filenames
+    # typically use playlist titles, not raw ids.
+    if _looks_like_spotify_id(playlist_name):
+        return True
     needle = _normalize_playlist_name(playlist_name)
     if not needle:
         return True
@@ -1157,16 +1167,18 @@ def _spotify_exportify_queries_interactive(url: str, wait_seconds: int = 180):
             console.print(Text(f"CSV not found: {csv_path}", style=COL_ERR))
             return []
         if not _csv_matches_playlist_name(csv_path, default_name):
-            console.print(Text(f"CSV filename must match playlist name: {default_name}", style=COL_ERR))
-            return []
+            console.print(Text(f"CSV filename doesn't look like playlist '{default_name}', continuing anyway.", style=COL_WARN))
         return _queries_from_exportify_csv(csv_path)
 
     # No explicit filename: keep checking newest file until timeout.
     remaining = max(wait_seconds, 10)
     while remaining > 0:
         guessed_csv = _find_exportify_csv(default_name)
-        if guessed_csv and guessed_csv.exists() and _csv_matches_playlist_name(guessed_csv, default_name):
-            console.print(Text(f"Detected Exportify CSV: {guessed_csv}", style=COL_GOOD))
+        if guessed_csv and guessed_csv.exists():
+            if not _csv_matches_playlist_name(guessed_csv, default_name):
+                console.print(Text(f"Using newest CSV despite name mismatch: {guessed_csv.name}", style=COL_WARN))
+            else:
+                console.print(Text(f"Detected Exportify CSV: {guessed_csv}", style=COL_GOOD))
             try:
                 return _queries_from_exportify_csv(guessed_csv)
             except Exception as e:
