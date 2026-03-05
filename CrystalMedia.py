@@ -520,20 +520,10 @@ class FixedProgressLogger:
         self.console = console_obj
         self.logs = []
         self.layout = Layout()
-        if header_text is not None:
-            self.layout.split_column(
-                Layout(name="header", size=10),
-                Layout(name="progress", size=8),
-                Layout(name="logs", size=16)
-            )
-            self.layout["header"].update(
-                Panel(header_text, border_style=COL_MENU, title="CrystalMedia", title_align="left")
-            )
-        else:
-            self.layout.split_column(
-                Layout(name="progress", size=8),
-                Layout(name="logs", size=16)
-            )
+        self.layout.split_column(
+            Layout(name="progress", size=8),
+            Layout(name="logs", size=16)
+        )
         self.progress = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -569,7 +559,6 @@ class FixedProgressLogger:
         log_runtime(f"[{level.upper()}] {msg}")
         if level in ("error", "warning"):
             log_crash(msg)
-
         if len(self.logs) > 15:
             self.logs = self.logs[-15:]
 
@@ -740,6 +729,8 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
 
     options = get_ydl_options(is_playlist, content_type)
 
+    runtime_preference = select_js_runtime_preference()
+
     # Initialize fixed progress logger
     progress_logger = FixedProgressLogger(console)
     progress_logger.start()
@@ -771,7 +762,10 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                 self.logger.add_log(clean_msg, level)
 
         def debug(self, msg):
-            self._handle_message(msg, "info")
+            if any(x in msg for x in ['[youtube]', '[download]', '[info]', '[Merger]']):
+                if 'ETA' in msg or '%' in msg:
+                    return
+                self.logger.add_log(strip_ansi(msg), "info")
 
         def info(self, msg):
             self._handle_message(msg, "info")
@@ -804,7 +798,6 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
     final_path = None
     download_completed = False
 
-    runtime_preference = select_js_runtime_preference()
     runtime_profiles = build_js_runtime_profiles(runtime_preference)
 
     for runtime_try, runtime_list in enumerate(runtime_profiles, start=1):
@@ -877,7 +870,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
         else:
             console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
-        pause_for_reading("Download success — review above", 15)
+        pause_for_reading("Download success — review above", 30)
         return
 
     progress_logger.add_log("Maximum retries reached", "error")
