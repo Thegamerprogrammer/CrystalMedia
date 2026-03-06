@@ -205,6 +205,15 @@ CrystalMedia is released under the **MIT License** (see [`LICENSE`](./LICENSE)).
 
 Use responsibly and only with content you are authorized to download.
 
+- No Affiliation
+CrystalMedia is an independent, unofficial, community-developed project with no affiliation, endorsement, or partnership with YouTube, Google LLC, Spotify AB, or any related entities.
+Dependency Notices
+- This project uses third-party libraries including yt-dlp and relies on user-provided data/credentials. The authors do not control, modify, or distribute these dependencies in any infringing manner.
+ Takedown Compliance
+- If you are a rights holder and believe content related to this project infringes your rights, contact [your email or GitHub issues] with a proper DMCA/copyright notice. We will comply with valid legal requests, including removal of repo access if required.
+- Indemnification Clause (if you wanna go full corporate-scary)
+- By using CrystalMedia, you agree to indemnify and hold harmless the authors, contributors, and any associated parties from any claims, damages, losses, liabilities, costs, or expenses (including attorneys' fees) arising from your use or misuse of the software.
+
 ---
 
 ## 🧯 Troubleshooting
