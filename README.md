@@ -78,16 +78,6 @@ Before install, you can explore a modern clickable mini site + complete visual d
 ![Missing Dependencies Troubleshooting](docs/media/15-stuck-missing-deps.svg)
 ![Output and Logs](docs/media/16-output-structure.svg)
 
-### Video / GIF recommendation for release docs
-
-To publish real full-session recordings (menu navigation, mode selection, progress logs, and recovery flows), record with:
-
-- **OBS Studio** (long-form videos)
-- **ScreenToGif** (quick GIF walkthroughs)
-- **ShareX** (clip + GIF export)
-
-Then attach them to GitHub Releases and embed links in this README.
-
 ---
 
 ## 🎮 Interactive Walkthrough
