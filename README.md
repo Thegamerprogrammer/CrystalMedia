@@ -214,6 +214,9 @@ Dependency Notices
 - Indemnification Clause (if you wanna go full corporate-scary)
 - By using CrystalMedia, you agree to indemnify and hold harmless the authors, contributors, and any associated parties from any claims, damages, losses, liabilities, costs, or expenses (including attorneys' fees) arising from your use or misuse of the software.
 
+## CrystalMedia does not circumvent digital rights management (DRM).
+## It relies on publicly available interfaces and third-party libraries.
+
 ---
 
 ## 🧯 Troubleshooting
