@@ -234,8 +234,8 @@ FIGLET = Figlet(font='slant')
 FIGLET_ART_LINES = FIGLET.renderText('CrystalMedia').rstrip('\n').splitlines()
 
 
-def _compose_splash_frame() -> Text:
-    """Overlay splash title onto the animated starfield canvas."""
+def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
+    """Overlay splash title and optional body content onto the animated starfield canvas."""
     star_lines = STARFIELD.render().splitlines()
     width = max((len(line) for line in star_lines), default=80)
     if not star_lines:
@@ -264,7 +264,20 @@ def _compose_splash_frame() -> Text:
                     canvas[info_row][c] = ch
         info_row += 1
 
-    return Text('\n'.join(''.join(row) for row in canvas), style='dim #87A9C6')
+    if body_lines:
+        body_start = min(len(canvas) - 1, info_row)
+        for idx, line in enumerate(body_lines):
+            row = body_start + idx
+            if row >= len(canvas):
+                break
+            text = line[: max(1, width - 4)]
+            left = 2
+            for col, ch in enumerate(text):
+                c = left + col
+                if c < width:
+                    canvas[row][c] = ch
+
+    return Text('\n'.join(''.join(row) for row in canvas), style='#A5D8FF')
 
 # ──────────────────────────────────────────────
 # List imported libraries with style
@@ -341,38 +354,14 @@ def display_clean_splash():
 
 def build_main_menu_frame(categories, selected_index) -> Text:
     """Build animated starfield + menu as a single frame renderable."""
-    star_lines = STARFIELD.render().splitlines()
-    width = max((len(line) for line in star_lines), default=80)
-    if not star_lines:
-        star_lines = [" " * width for _ in range(12)]
-    canvas = [list(line.ljust(width)) for line in star_lines]
-
-    header = "CrystalMedia v4"
-    divider = "-" * min(60, max(20, width - 4))
+    divider = "-" * 60
     menu_lines = [
-        header,
-        divider,
         "Main Category Selection",
         *[("→ " if i == selected_index else "  ") + cat for i, cat in enumerate(categories)],
         "",
         "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
     ]
-
-    menu_height = len(menu_lines)
-    start_row = max(0, (len(canvas) - menu_height) // 2)
-
-    for idx, line in enumerate(menu_lines):
-        row = start_row + idx
-        if row >= len(canvas):
-            break
-        text = line[: max(1, width - 4)]
-        left = max(2, (width - len(text)) // 2 if idx <= 1 else 2)
-        for col, ch in enumerate(text):
-            c = left + col
-            if c < width:
-                canvas[row][c] = ch
-
-    return Text('\n'.join(''.join(row) for row in canvas), style='dim #87A9C6')
+    return _compose_splash_frame([divider, *menu_lines])
 
 def clear_screen():
     """Cross-platform screen clear for animated frames."""
@@ -1388,10 +1377,10 @@ def main_loop():
 
     while True:
         try:
-            with Live(console=console, refresh_per_second=30, screen=True) as live:
+            with Live(console=console, refresh_per_second=60, screen=True) as live:
                 while True:
                     live.update(build_main_menu_frame(categories, selected_index), refresh=True)
-                    key = read_key(timeout=1 / 30)
+                    key = read_key(timeout=1 / 60)
                     if key == "UP":
                         selected_index = (selected_index - 1) % len(categories)
                     elif key == "DOWN":

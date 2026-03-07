@@ -24,17 +24,32 @@ class StarfieldBackground:
         if width is None or height is None:
             term = shutil.get_terminal_size(fallback=(80, 24))
             width = width or max(30, term.columns)
-            height = height or max(6, min(12, term.lines // 3))
+            height = height or max(12, term.lines)
         self.width = width
         self.height = height
         self.star_count = star_count
         self._lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
-        self._stars = [
-            [random.randint(0, width - 1), random.randint(0, height - 1), random.choice([".", "*", "+"]), random.choice([1, 1, 1, 2])]
-            for _ in range(star_count)
+        self._stars = [self._new_star() for _ in range(star_count)]
+
+    def _new_star(self):
+        return [
+            random.randint(0, self.width - 1),
+            random.randint(0, self.height - 1),
+            random.choice([".", "*", "+"]),
+            random.choice([1, 1, 1, 2]),
         ]
+
+    def _refresh_terminal_size(self):
+        term = shutil.get_terminal_size(fallback=(self.width, self.height))
+        new_width = max(30, term.columns)
+        new_height = max(12, term.lines)
+        if new_width == self.width and new_height == self.height:
+            return
+        self.width = new_width
+        self.height = new_height
+        self._stars = [self._new_star() for _ in range(self.star_count)]
 
     def start(self):
         if self._running:
@@ -49,17 +64,19 @@ class StarfieldBackground:
     def _run(self):
         while self._running:
             with self._lock:
+                self._refresh_terminal_size()
                 for star in self._stars:
-                    star[0] -= star[3]
-                    if star[0] < 0:
-                        star[0] = self.width - 1
-                        star[1] = random.randint(0, self.height - 1)
+                    star[1] += star[3]
+                    if star[1] >= self.height:
+                        star[1] = 0
+                        star[0] = random.randint(0, self.width - 1)
                         star[2] = random.choice([".", "*", "+"])
                         star[3] = random.choice([1, 1, 1, 2])
-            time.sleep(1 / 30)
+            time.sleep(1 / 60)
 
     def render(self) -> str:
         with self._lock:
+            self._refresh_terminal_size()
             canvas = [[" " for _ in range(self.width)] for _ in range(self.height)]
             for x, y, token, _speed in self._stars:
                 if 0 <= x < self.width and 0 <= y < self.height:
