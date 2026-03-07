@@ -230,6 +230,41 @@ COL_MENU = "bold #D6E4FF"
 
 
 STARFIELD = StarfieldBackground()  # auto-sizes from terminal when available
+FIGLET = Figlet(font='slant')
+FIGLET_ART_LINES = FIGLET.renderText('CrystalMedia').rstrip('\n').splitlines()
+
+
+def _compose_splash_frame() -> Text:
+    """Overlay splash title onto the animated starfield canvas."""
+    star_lines = STARFIELD.render().splitlines()
+    width = max((len(line) for line in star_lines), default=80)
+    if not star_lines:
+        star_lines = [" " * width for _ in range(10)]
+
+    canvas = [list(line.ljust(width)) for line in star_lines]
+
+    start_row = max(0, min(2, len(canvas) - len(FIGLET_ART_LINES) - 3))
+    for idx, line in enumerate(FIGLET_ART_LINES):
+        row = start_row + idx
+        if row >= len(canvas):
+            break
+        left = max(0, (width - len(line)) // 2)
+        for col, ch in enumerate(line):
+            c = left + col
+            if c < width and ch != " ":
+                canvas[row][c] = ch
+
+    info_row = min(len(canvas) - 2, start_row + len(FIGLET_ART_LINES))
+    for text in ("v4", "-" * min(width, 60)):
+        left = max(0, (width - len(text)) // 2)
+        if 0 <= info_row < len(canvas):
+            for col, ch in enumerate(text):
+                c = left + col
+                if c < width:
+                    canvas[info_row][c] = ch
+        info_row += 1
+
+    return Text('\n'.join(''.join(row) for row in canvas), style='dim #87A9C6')
 
 # ──────────────────────────────────────────────
 # List imported libraries with style
@@ -296,6 +331,54 @@ if not command_exists("ffmpeg"):
 # ──────────────────────────────────────────────
 def display_full_splash():
     clear_screen()
+    console.print(_compose_splash_frame())
+
+
+def display_clean_splash():
+    clear_screen()
+    console.print(_compose_splash_frame())
+
+
+def display_main_menu_frame(categories, selected_index):
+    """Render animated starfield with menu options overlaid in the same frame."""
+    clear_screen()
+    star_lines = STARFIELD.render().splitlines()
+    width = max((len(line) for line in star_lines), default=80)
+    if not star_lines:
+        star_lines = [" " * width for _ in range(12)]
+    canvas = [list(line.ljust(width)) for line in star_lines]
+
+    title_lines = FIGLET_ART_LINES
+    title_row = max(0, min(1, len(canvas) - len(title_lines) - 8))
+    for idx, line in enumerate(title_lines):
+        row = title_row + idx
+        if row >= len(canvas):
+            break
+        left = max(0, (width - len(line)) // 2)
+        for col, ch in enumerate(line):
+            c = left + col
+            if c < width and ch != " ":
+                canvas[row][c] = ch
+
+    menu_start = min(len(canvas) - 7, title_row + len(title_lines) + 1)
+    menu_lines = [
+        "Main Category Selection",
+        *[("→ " if i == selected_index else "  ") + cat for i, cat in enumerate(categories)],
+        "",
+        "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
+    ]
+    for idx, line in enumerate(menu_lines):
+        row = menu_start + idx
+        if row >= len(canvas):
+            break
+        text = line[: width - 2]
+        left = 2
+        for col, ch in enumerate(text):
+            c = left + col
+            if c < width:
+                canvas[row][c] = ch
+
+    console.print(Text('\n'.join(''.join(row) for row in canvas), style='dim #87A9C6'))
     console.print(Text(STARFIELD.render(), style="dim #87A9C6"))
     figlet = Figlet(font='slant')
     art = figlet.renderText('CrystalMedia')
@@ -1259,42 +1342,53 @@ def drain_pending_input():
             pass
 
 
-def read_key():
-    """Cross-platform arrow key / Enter detection."""
+def read_key(timeout: float = 0.05):
+    """Cross-platform non-blocking arrow key / Enter detection."""
     if platform.system() == "Windows":
         import msvcrt
+        if not msvcrt.kbhit():
+            time.sleep(timeout)
+            return None
         k = msvcrt.getch()
-        if k == b'\xe0':
+        if k in (b'\xe0', b'\x00') and msvcrt.kbhit():
             k2 = msvcrt.getch()
-            if k2 == b'H': return "UP"
-            if k2 == b'P': return "DOWN"
+            if k2 == b'H':
+                return "UP"
+            if k2 == b'P':
+                return "DOWN"
         elif k == b'\r':
             return "ENTER"
         elif k == b'\x03':
             raise KeyboardInterrupt
         return None
-    else:
-        import tty, termios, select
-        if not sys.stdin.isatty():
-            return None
-        fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
-        try:
-            tty.setraw(fd)
-            rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-            if rlist:
-                ch = sys.stdin.read(1)
-                if ch == "\x1b":
-                    ch2 = sys.stdin.read(1)
-                    ch3 = sys.stdin.read(1)
-                    seq = ch + ch2 + ch3
-                    if seq == "\x1b[A": return "UP"
-                    if seq == "\x1b[B": return "DOWN"
-                if ch in ("\r", "\n"): return "ENTER"
-                if ch == "\x03": raise KeyboardInterrupt
-            return None
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    import tty, termios, select
+    if not sys.stdin.isatty():
+        time.sleep(timeout)
+        return None
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+        if rlist:
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":
+                ch2 = sys.stdin.read(1)
+                ch3 = sys.stdin.read(1)
+                seq = ch + ch2 + ch3
+                if seq == "\x1b[A":
+                    return "UP"
+                if seq == "\x1b[B":
+                    return "DOWN"
+            if ch in ("\r", "\n"):
+                return "ENTER"
+            if ch == "\x03":
+                raise KeyboardInterrupt
+        return None
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
 
 # ──────────────────────────────────────────────
 # Primary application loop
@@ -1311,17 +1405,10 @@ def main_loop():
     display_full_splash()
 
     while True:
-        display_clean_splash()
-
-        console.print(Text("Main Category Selection", style=COL_TITLE))
-        for i, category in enumerate(categories):
-            prefix = "→ " if i == selected_index else " "
-            style = COL_ACC if i == selected_index else "white"
-            console.print(Text(prefix + category, style=style))
-        console.print(Text("\n↑ ↓ to navigate • Enter to select • Ctrl+C to quit", style=COL_ACC))
+        display_main_menu_frame(categories, selected_index)
 
         try:
-            key = read_key()
+            key = read_key(timeout=1 / 30)
             if key == "UP":
                 selected_index = (selected_index - 1) % len(categories)
             elif key == "DOWN":
