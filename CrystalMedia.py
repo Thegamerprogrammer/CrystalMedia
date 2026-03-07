@@ -379,6 +379,21 @@ def display_main_menu_frame(categories, selected_index):
                 canvas[row][c] = ch
 
     console.print(Text('\n'.join(''.join(row) for row in canvas), style='dim #87A9C6'))
+    console.print(Text(STARFIELD.render(), style="dim #87A9C6"))
+    figlet = Figlet(font='slant')
+    art = figlet.renderText('CrystalMedia')
+    console.print(Text(art, style=COL_TITLE))
+    console.print(Text("v4", style=COL_ACC))
+    console.print("-" * 60)
+
+def display_clean_splash():
+    clear_screen()
+    console.print(Text(STARFIELD.render(), style="dim #87A9C6"))
+    figlet = Figlet(font='slant')
+    art = figlet.renderText('CrystalMedia')
+    console.print(Text(art, style=COL_TITLE))
+    console.print(Text("v4", style=COL_ACC))
+    console.print("-" * 60)
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
