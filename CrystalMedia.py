@@ -340,7 +340,7 @@ def display_clean_splash():
 
 
 def display_main_menu_frame(categories, selected_index):
-    """Render animated starfield with menu options overlaid in the same frame."""
+    """Render animated starfield with menu content overlaid cleanly."""
     clear_screen()
     star_lines = STARFIELD.render().splitlines()
     width = max((len(line) for line in star_lines), default=80)
@@ -348,55 +348,42 @@ def display_main_menu_frame(categories, selected_index):
         star_lines = [" " * width for _ in range(12)]
     canvas = [list(line.ljust(width)) for line in star_lines]
 
-    title_lines = FIGLET_ART_LINES
-    title_row = max(0, min(1, len(canvas) - len(title_lines) - 8))
-    for idx, line in enumerate(title_lines):
-        row = title_row + idx
-        if row >= len(canvas):
-            break
-        left = max(0, (width - len(line)) // 2)
-        for col, ch in enumerate(line):
-            c = left + col
-            if c < width and ch != " ":
-                canvas[row][c] = ch
-
-    menu_start = min(len(canvas) - 7, title_row + len(title_lines) + 1)
+    header = "CrystalMedia v4"
+    divider = "-" * min(60, max(20, width - 4))
     menu_lines = [
+        header,
+        divider,
         "Main Category Selection",
         *[("→ " if i == selected_index else "  ") + cat for i, cat in enumerate(categories)],
         "",
         "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
     ]
+
+    # Keep menu readable and avoid overlaps regardless of terminal height.
+    menu_height = len(menu_lines)
+    start_row = max(0, (len(canvas) - menu_height) // 2)
+
     for idx, line in enumerate(menu_lines):
-        row = menu_start + idx
+        row = start_row + idx
         if row >= len(canvas):
             break
-        text = line[: width - 2]
-        left = 2
+        text = line[: max(1, width - 4)]
+        left = max(2, (width - len(text)) // 2 if idx <= 1 else 2)
         for col, ch in enumerate(text):
             c = left + col
             if c < width:
                 canvas[row][c] = ch
 
     console.print(Text('\n'.join(''.join(row) for row in canvas), style='dim #87A9C6'))
-    console.print(Text(STARFIELD.render(), style="dim #87A9C6"))
-    figlet = Figlet(font='slant')
-    art = figlet.renderText('CrystalMedia')
-    console.print(Text(art, style=COL_TITLE))
-    console.print(Text("v4", style=COL_ACC))
-    console.print("-" * 60)
-
-def display_clean_splash():
-    clear_screen()
-    console.print(Text(STARFIELD.render(), style="dim #87A9C6"))
-    figlet = Figlet(font='slant')
-    art = figlet.renderText('CrystalMedia')
-    console.print(Text(art, style=COL_TITLE))
-    console.print(Text("v4", style=COL_ACC))
-    console.print("-" * 60)
 
 def clear_screen():
-    os.system('cls' if os.name == 'nt' else 'clear')
+    """Cross-platform screen clear for animated frames."""
+    try:
+        console.clear()
+    except Exception:
+        # ANSI fallback for environments where Rich clear is unavailable.
+        sys.stdout.write("\033[2J\033[H")
+        sys.stdout.flush()
 
 # ──────────────────────────────────────────────
 # Directory structure
