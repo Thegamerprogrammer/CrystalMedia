@@ -179,7 +179,36 @@ CrystalMedia/
 
 - Python **3.8+**
 - Internet connection
-- FFmpeg (app can help bootstrap if missing)
+- FFmpeg (install via your OS package manager, or use Docker below)
+
+---
+
+
+## 🐳 Docker (no host Python/FFmpeg install required)
+
+If you prefer not to install Python/FFmpeg directly on your machine, run CrystalMedia in Docker:
+
+```bash
+docker build -t crystalmedia .
+```
+
+Linux/macOS:
+```bash
+docker run --rm -it \
+  -v "$(pwd)/CrystalMedia:/app/CrystalMedia" \
+  -v "$(pwd)/csv:/app/csv" \
+  crystalmedia
+```
+
+Windows PowerShell:
+```powershell
+docker run --rm -it `
+  -v "${PWD}/CrystalMedia:/app/CrystalMedia" `
+  -v "${PWD}/csv:/app/csv" `
+  crystalmedia
+```
+
+This keeps your host clean while still running the full TUI flow.
 
 ---
 
@@ -213,6 +242,7 @@ Dependency Notices
 
 - If terminal rendering looks off after a resize, return to the main menu and start the download again.
 - Check `CrystalMedia/logs/crash.txt` for error traces and `CrystalMedia/logs/deps.txt` for dependency snapshots after startup.
+- On unrecoverable errors, CrystalMedia shows a fatal error panel, writes details to `CrystalMedia/logs/crash.txt`, and exits cleanly.
 
 ---
 

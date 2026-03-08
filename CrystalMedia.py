@@ -20,16 +20,14 @@ import platform
 import re
 import shutil
 from pathlib import Path
-import zipfile
-import tarfile
 import urllib.request
 import urllib.parse
 import html
 import json
 import csv
 import webbrowser
+import traceback
 from datetime import datetime
-from importlib.metadata import version as pkg_version, PackageNotFoundError
 
 
 APP_ROOT = Path("CrystalMedia")
@@ -85,55 +83,32 @@ def print_dependency_notice():
     print(" - ffmpeg: remuxing and MP3 extraction.")
     print(" - spotdl: legacy Spotify fallback path.")
     print(" - rich + pyfiglet: terminal UI and splash rendering.")
-    print("Windows PATH note: Scripts folder like %APPDATA%\Python\PythonXY\Scripts.")
+    print(r"Windows PATH note: Scripts folder like %APPDATA%\Python\PythonXY\Scripts.")
     print("Linux/macOS PATH counterpart: ~/.local/bin and shell profile export PATH updates.")
 
 
 
 
-def _fetch_pypi_version(package_name: str):
-    url = f"https://pypi.org/pypi/{package_name}/json"
-    try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
-        return payload.get("info", {}).get("version")
-    except Exception:
-        return None
+def _runtime_dependency_snapshot():
+    """Print a simple dependency snapshot without network calls or runtime installs."""
+    print("\nCrystalMedia dependency snapshot:")
+    bins = {
+        "deno": command_exists("deno"),
+        "node/nodejs": command_exists("node") or command_exists("nodejs"),
+        "yt-dlp": command_exists("yt-dlp"),
+        "ffmpeg": command_exists("ffmpeg"),
+        "spotdl": command_exists("spotdl"),
+    }
+    for name, ok in bins.items():
+        status = "found" if ok else "missing"
+        print(f" - {name}: {status}")
 
-
-def _installed_python_package_version(package_name: str):
-    try:
-        return pkg_version(package_name)
-    except PackageNotFoundError:
-        return None
-    except Exception:
-        return None
-
-
-def preflight_sync_python_tools():
-    """Check Python package availability/version status without installing at runtime."""
-    package_names = ["yt-dlp", "spotdl", "rich", "pyfiglet"]
-    print("\nCrystalMedia PyPI preflight: checking package status (no runtime installs)...")
-    for pkg_name in package_names:
-        installed = _installed_python_package_version(pkg_name)
-        latest = _fetch_pypi_version(pkg_name)
-        if installed is None:
-            print(f" - {pkg_name}: not installed. Install via pip to enable full functionality.")
-            continue
-        if latest is None:
-            print(f" - {pkg_name}: installed ({installed}); latest version unavailable.")
-            continue
-        if installed != latest:
-            print(f" - {pkg_name}: installed {installed}, latest {latest} (update recommended).")
-        else:
-            print(f" - {pkg_name}: already latest ({latest}).")
 
 _ensure_app_layout()
 check_log_rotation()
-preflight_sync_python_tools()
 install_exportify_vendor_requirements()
 print_dependency_notice()
-log_runtime("Startup: dependency preflight shown.")
+log_runtime("Startup: dependency notice shown.")
 
 # ──────────────────────────────────────────────
 # ANSI stripper for yt-dlp colored progress strings
@@ -154,111 +129,15 @@ def should_suppress_ytdlp_log(msg: str) -> bool:
     )
     return any(fragment in clean for fragment in noisy_fragments)
 
-# ──────────────────────────────────────────────
-# Self-healing dependency block — runs first
-# ──────────────────────────────────────────────
+
 def command_exists(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 
-def ask_add_to_path(path_value: str, reason: str):
-    print(f"\nAdd to PATH for {reason}?\n  {path_value}")
-    ans = input("Add now? [Y/n]: ").strip().lower()
-    if ans in ('', 'y', 'yes'):
-        os.environ["PATH"] += os.pathsep + path_value
-        log_runtime(f"PATH updated: {path_value}")
-        return True
-    log_runtime(f"PATH unchanged (user declined): {path_value}")
-    return False
-
-def ask_install(what: str) -> bool:
-    print(f"\nCrystalMedia needs {what} to not be a broken toy.")
-    ans = input("Install now? [Y/n]: ").strip().lower()
-    return ans in ('', 'y', 'yes')
-
-def run_quiet(cmd_list):
-    try:
-        subprocess.check_call(cmd_list, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True
-    except:
-        return False
-
-
-def run_shell_quiet(cmd: str):
-    try:
-        subprocess.check_call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True
-    except:
-        return False
-
-
-def detect_linux_distro() -> str:
-    if platform.system() != "Linux":
-        return ""
-    os_release = Path("/etc/os-release")
-    if not os_release.exists():
-        return ""
-    data = os_release.read_text(encoding="utf-8", errors="ignore").lower()
-    for key in ["ubuntu", "debian", "fedora", "rhel", "centos", "arch", "manjaro", "opensuse", "suse", "alpine"]:
-        if key in data:
-            return key
-    return "linux"
-
-
-def install_node_runtime_os_aware() -> bool:
-    """Install Node.js only with platform-appropriate installers."""
-    system = platform.system()
-    if system == "Windows":
-        if command_exists("winget"):
-            return run_quiet(["winget", "install", "OpenJS.NodeJS.LTS", "--silent"])
-        if command_exists("choco"):
-            return run_quiet(["choco", "install", "nodejs-lts", "-y"])
-        return False
-    if system == "Darwin":
-        if command_exists("brew"):
-            return run_quiet(["brew", "install", "node"])
-        return False
-
-    distro = detect_linux_distro()
-    if command_exists("apt-get"):
-        return run_shell_quiet("sudo apt-get update && sudo apt-get install -y nodejs npm")
-    if command_exists("dnf"):
-        return run_shell_quiet("sudo dnf install -y nodejs npm")
-    if command_exists("yum"):
-        return run_shell_quiet("sudo yum install -y nodejs npm")
-    if command_exists("pacman"):
-        return run_shell_quiet("sudo pacman -Sy --noconfirm nodejs npm")
-    if command_exists("zypper"):
-        return run_shell_quiet("sudo zypper --non-interactive install nodejs npm")
-    if command_exists("apk"):
-        return run_shell_quiet("sudo apk add --no-cache nodejs npm")
-    log_runtime(f"No supported package manager for Node.js install on distro={distro}")
-    return False
-
 print("CrystalMedia performing dependency health check...")
 log_runtime("Dependency health check started.")
+_runtime_dependency_snapshot()
 
-# Windows: dynamic user Scripts PATH
-if platform.system() == "Windows":
-    try:
-        import site
-        user_base = site.getusersitepackages()
-        user_scripts = Path(user_base).parent.parent / "Scripts"
-        user_scripts_str = str(user_scripts)
-    except Exception:
-        py_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
-        user_scripts_str = os.path.expanduser(rf"~\AppData\Roaming\Python\{py_ver}\Scripts")
-
-    if user_scripts_str not in os.environ["PATH"]:
-        ask_add_to_path(user_scripts_str, "Windows Python user scripts")
-
-# Unix/macOS/Linux: add ~/.local/bin if missing
-elif platform.system() in ("Linux", "Darwin"):
-    local_bin = os.path.expanduser("~/.local/bin")
-    if local_bin not in os.environ.get("PATH", "").split(os.pathsep):
-        ask_add_to_path(local_bin, "Unix/macOS local user binaries")
-
-# Deno
 if not command_exists("deno"):
     print("Deno missing. Install manually if yt-dlp JS challenges fail: https://deno.com")
 
@@ -271,6 +150,18 @@ if not command_exists("yt-dlp"):
 if not command_exists("spotdl"):
     print("spotdl missing (legacy fallback). Install with: pip install spotdl")
 
+if not command_exists("ffmpeg"):
+    print("ffmpeg missing. Install via your OS package manager (or use Docker).")
+
+
+
+
+def run_quiet(cmd_list):
+    try:
+        subprocess.check_call(cmd_list, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return False
 
 
 def available_js_runtimes():
@@ -318,6 +209,12 @@ from pyfiglet import Figlet
 import yt_dlp
 from yt_dlp import YoutubeDL
 from spotdl import Spotdl
+from crystalmedia.extras import (
+    StarfieldBackground,
+    write_mp3_tags,
+    iter_downloaded_entries,
+    extract_entry_final_path,
+)
 
 console = Console()
 
@@ -330,6 +227,76 @@ COL_WARN = "bold #FFE066"
 COL_ERR = "bold #FF9999"
 COL_GOOD = "bold #B2F2BB"
 COL_MENU = "bold #D6E4FF"
+
+
+STARFIELD = StarfieldBackground()  # auto-sizes from terminal when available
+FIGLET = Figlet(font='slant')
+FIGLET_ART_LINES = FIGLET.renderText('CrystalMedia').rstrip('\n').splitlines()
+
+
+def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
+    """Overlay CrystalMedia UI in front of the animated starfield background."""
+    star_lines = STARFIELD.render().splitlines()
+    width = max((len(line) for line in star_lines), default=80)
+    if not star_lines:
+        star_lines = [" " * width for _ in range(10)]
+
+    canvas = [list(line.ljust(width)) for line in star_lines]
+
+    def _blank_row(row: int, left: int, right: int):
+        if 0 <= row < len(canvas):
+            l = max(0, left)
+            r = min(width, right)
+            for c in range(l, r):
+                canvas[row][c] = " "
+
+    start_row = max(0, min(2, len(canvas) - len(FIGLET_ART_LINES) - 3))
+    for idx, line in enumerate(FIGLET_ART_LINES):
+        row = start_row + idx
+        if row >= len(canvas):
+            break
+        left = 2
+        _blank_row(row, left - 1, left + len(line) + 1)
+        for col, ch in enumerate(line):
+            c = left + col
+            if c < width and ch != " ":
+                canvas[row][c] = ch
+
+    info_row = min(len(canvas) - 2, start_row + len(FIGLET_ART_LINES))
+    for text in ("v4", "-" * min(width - 4, 60)):
+        left = 2
+        if 0 <= info_row < len(canvas):
+            _blank_row(info_row, left - 2, left + len(text) + 2)
+            for col, ch in enumerate(text):
+                c = left + col
+                if c < width:
+                    canvas[info_row][c] = ch
+        info_row += 1
+
+    if body_lines:
+        body_start = min(len(canvas) - 1, info_row)
+        for idx, line in enumerate(body_lines):
+            row = body_start + idx
+            if row >= len(canvas):
+                break
+            text = line[: max(1, width - 4)]
+            left = 2
+            _blank_row(row, left - 1, left + len(text) + 1)
+            for col, ch in enumerate(text):
+                c = left + col
+                if c < width:
+                    canvas[row][c] = ch
+
+    return Text('\n'.join(''.join(row) for row in canvas), style='#A5D8FF')
+
+
+def _compose_plain_splash(body_lines: list[str] | None = None) -> Text:
+    """Render vanilla CrystalMedia splash without animated starfield background."""
+    width = max(80, console.size.width)
+    lines = [*FIGLET_ART_LINES, "v4", "-" * min(width - 4, 60)]
+    if body_lines:
+        lines.extend(body_lines)
+    return Text("\n".join(lines), style=COL_MENU)
 
 # ──────────────────────────────────────────────
 # List imported libraries with style
@@ -387,69 +354,6 @@ def pause_for_reading(message: str = "Continuing in", seconds: int = 15):
 # 5-second countdown after import list
 pause_for_reading("Imports complete", 5)
 
-# ──────────────────────────────────────────────
-# Download FFmpeg directly from gyan.dev if missing
-# ──────────────────────────────────────────────
-def download_ffmpeg():
-    ffmpeg_dir = APP_ROOT / "ffmpeg"
-    bin_dir = ffmpeg_dir / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    if command_exists("ffmpeg"):
-        console.print(Text("FFmpeg already found in PATH — skipping.", style=COL_GOOD))
-        return
-
-    console.print(Text("FFmpeg missing — preparing architecture-aware download...", style=COL_WARN))
-    system = platform.system()
-    machine = platform.machine().lower()
-    archive_path = None
-
-    try:
-        if system == "Windows":
-            if machine not in ("amd64", "x86_64"):
-                raise RuntimeError(f"Unsupported Windows architecture for bundled FFmpeg: {machine}")
-            url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-            archive_path = Path("ffmpeg.zip")
-        elif system == "Linux":
-            if machine not in ("amd64", "x86_64"):
-                raise RuntimeError(f"Unsupported Linux architecture for bundled FFmpeg: {machine}")
-            url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-amd64-static.tar.xz"
-            archive_path = Path("ffmpeg.tar.xz")
-        elif system == "Darwin":
-            # gyan.dev is Windows-centric; avoid downloading wrong binaries on macOS/ARM.
-            raise RuntimeError("Automatic FFmpeg download is disabled on macOS. Please install via Homebrew: brew install ffmpeg")
-        else:
-            raise RuntimeError(f"Unsupported OS for auto-download: {system}")
-
-        console.print(f"[cyan]Downloading {url.split('/')[-1]}...[/cyan]")
-        urllib.request.urlretrieve(url, archive_path)
-        console.print("[cyan]Extracting binaries...[/cyan]")
-
-        if system == "Windows":
-            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                for file in zip_ref.namelist():
-                    if file.endswith(("ffmpeg.exe", "ffprobe.exe")):
-                        zip_ref.extract(file, bin_dir)
-                        extracted = bin_dir / file
-                        if extracted.parent != bin_dir:
-                            shutil.move(extracted, bin_dir / extracted.name)
-        else:
-            with tarfile.open(archive_path, "r:xz") as tar:
-                for member in tar.getmembers():
-                    if member.name.endswith(("ffmpeg", "ffprobe")):
-                        tar.extract(member, bin_dir)
-                        extracted = bin_dir / member.name
-                        if extracted.parent != bin_dir:
-                            shutil.move(extracted, bin_dir / extracted.name.split('/')[-1])
-
-        archive_path.unlink(missing_ok=True)
-        console.print(Text(f"FFmpeg binaries downloaded to {bin_dir}", style=COL_GOOD))
-        ask_add_to_path(str(bin_dir.absolute()), "FFmpeg binaries")
-    except Exception as e:
-        if archive_path is not None:
-            archive_path.unlink(missing_ok=True)
-        console.print(Text(f"FFmpeg download failed: {str(e)}", style=COL_ERR))
-        console.print(Text("Install manually (Linux/macOS: package manager, Windows: gyan.dev).", style=COL_WARN))
-
 # Check FFmpeg availability (no runtime install/download)
 if not command_exists("ffmpeg"):
     console.print(Text("FFmpeg missing — install it to enable audio extraction/remuxing.", style=COL_WARN))
@@ -459,22 +363,32 @@ if not command_exists("ffmpeg"):
 # ──────────────────────────────────────────────
 def display_full_splash():
     clear_screen()
-    figlet = Figlet(font='slant')
-    art = figlet.renderText('CrystalMedia')
-    console.print(Text(art, style=COL_TITLE))
-    console.print(Text("v4", style=COL_ACC))
-    console.print("-" * 60)
+    console.print(_compose_splash_frame())
+
 
 def display_clean_splash():
     clear_screen()
-    figlet = Figlet(font='slant')
-    art = figlet.renderText('CrystalMedia')
-    console.print(Text(art, style=COL_TITLE))
-    console.print(Text("v4", style=COL_ACC))
-    console.print("-" * 60)
+    console.print(_compose_plain_splash())
+
+
+def build_main_menu_frame(categories, selected_index) -> Text:
+    """Build animated starfield + menu as a single frame renderable."""
+    menu_lines = [
+        "Main Category Selection",
+        *[("→ " if i == selected_index else "  ") + cat for i, cat in enumerate(categories)],
+        "",
+        "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
+    ]
+    return _compose_splash_frame(menu_lines)
 
 def clear_screen():
-    os.system('cls' if os.name == 'nt' else 'clear')
+    """Cross-platform screen clear for animated frames."""
+    try:
+        console.clear()
+    except Exception:
+        # ANSI fallback for environments where Rich clear is unavailable.
+        sys.stdout.write("\033[2J\033[H")
+        sys.stdout.flush()
 
 # ──────────────────────────────────────────────
 # Directory structure
@@ -652,26 +566,46 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
     return options
 
 def select_mp3_bitrate() -> str:
-    console.print(Text("MP3 Bitrate Selection", style=COL_TITLE))
-    console.print(Text(" 1. Low (96 kbps)", style=COL_MENU))
-    console.print(Text(" 2. Medium (128 kbps)", style=COL_MENU))
-    console.print(Text(" 3. Standard (192 kbps) [default]", style=COL_MENU))
-    console.print(Text(" 4. High (256 kbps)", style=COL_MENU))
-    console.print(Text(" 5. Insane (320 kbps)", style=COL_MENU))
+    clear_screen()
+    console.print(_compose_plain_splash([
+        "MP3 Bitrate Selection",
+        " 1. Low (96 kbps)",
+        " 2. Medium (128 kbps)",
+        " 3. Standard (192 kbps) [default]",
+        " 4. High (256 kbps)",
+        " 5. Insane (320 kbps)",
+    ]))
     choice = console.input(Text("→ ", style=COL_ACC)).strip() or "3"
     return {"1": "96", "2": "128", "3": "192", "4": "256", "5": "320"}.get(choice, "192")
 
 def select_mp4_quality() -> str:
-    console.print(Text("MP4 Quality Selection", style=COL_TITLE))
-    console.print(Text(" 1. Low (~360p)", style=COL_MENU))
-    console.print(Text(" 2. Medium (~480p–720p)", style=COL_MENU))
-    console.print(Text(" 3. High (~720p–1080p)", style=COL_MENU))
-    console.print(Text(" 4. Best (highest available) [default]", style=COL_MENU))
+    clear_screen()
+    console.print(_compose_plain_splash([
+        "MP4 Quality Selection",
+        " 1. Low (~360p)",
+        " 2. Medium (~480p–720p)",
+        " 3. High (~720p–1080p)",
+        " 4. Best (highest available) [default]",
+    ]))
     choice = console.input(Text("→ ", style=COL_ACC)).strip() or "4"
-    if choice == "1": return "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-    if choice == "2": return "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-    if choice == "3": return "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+    if choice == "1":
+        return "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+    if choice == "2":
+        return "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+    if choice == "3":
+        return "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
     return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+
+
+def select_embed_extras() -> bool:
+    clear_screen()
+    console.print(_compose_plain_splash([
+        "Embed extras (lyrics + art + subtitle fallback + metadata)",
+        " 1. Yes (recommended for MP3)",
+        " 2. No",
+    ]))
+    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "1"
+    return choice == "1"
 
 
 
@@ -779,11 +713,15 @@ def extract_final_path_from_info(final_info):
     return final_path
 
 
+
 def select_js_runtime_preference() -> str:
-    console.print(Text("JavaScript Runtime Preference", style=COL_TITLE))
-    console.print(Text(" 1. Auto fallback (recommended)", style=COL_MENU))
-    console.print(Text(" 2. Prefer Deno first", style=COL_MENU))
-    console.print(Text(" 3. Prefer Node first", style=COL_MENU))
+    clear_screen()
+    console.print(_compose_plain_splash([
+        "JavaScript Runtime Preference",
+        " 1. Auto fallback (recommended)",
+        " 2. Prefer Deno first",
+        " 3. Prefer Node first",
+    ]))
     choice = console.input(Text("→ ", style=COL_ACC)).strip() or "1"
     return {"1": "auto", "2": "deno", "3": "node"}.get(choice, "auto")
 
@@ -811,7 +749,7 @@ def to_js_runtime_option(runtime_list):
         return None
     return {runtime: {} for runtime in runtime_list}
 
-def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
+def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extras: bool = False) -> None:
     try:
         with YoutubeDL({"quiet": True}) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -903,6 +841,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
 
     retry_count = 0
     max_retries = 30
+    final_info = None
     final_path = None
     download_completed = False
 
@@ -938,6 +877,7 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
                     progress_logger.add_log("Age-restricted content detected. Attempting browser-cookies fallback.", "warning")
                     ok, info_with_cookies, browser_or_err = try_ytdlp_with_browser_cookies(url, options, progress_logger, extract_info_mode=True)
                     if ok:
+                        final_info = info_with_cookies
                         final_path = extract_final_path_from_info(info_with_cookies)
                         progress_logger.add_log(f"Cookie fallback succeeded with browser: {browser_or_err}", "success")
                         download_completed = True
@@ -974,6 +914,15 @@ def download_youtube(url: str, content_type: str, is_playlist: bool) -> None:
             console.print(Text(f"Noisy fallback failed: {str(e)}", style=COL_ERR))
 
     if download_completed:
+        if content_type == "audio" and isinstance(final_info, dict):
+            for entry in iter_downloaded_entries(final_info):
+                mp3_path = extract_entry_final_path(entry)
+                if not mp3_path:
+                    continue
+                try:
+                    write_mp3_tags(mp3_path, entry, embed_extras=embed_extras, user_agents=USER_AGENTS, log=progress_logger.add_log)
+                except Exception as e:
+                    progress_logger.add_log(f"Metadata/lyrics embed failed for {mp3_path.name}: {str(e)[:120]}", "warning")
         progress_logger.mark_complete("Download complete!")
         if final_path:
             progress_logger.add_log(f"✓ Final file: {final_path}", "success")
@@ -1258,7 +1207,7 @@ def _spotify_page_queries(url: str, max_tracks: int = 30):
     return queries
 
 
-def _download_spotify_queries_with_ytdlp(queries, target_dir: Path, progress_logger: FixedProgressLogger):
+def _download_spotify_queries_with_ytdlp(queries, target_dir: Path, progress_logger: FixedProgressLogger, embed_extras: bool = False):
     target_dir.mkdir(parents=True, exist_ok=True)
 
     class SpotifyYTDLPLogger:
@@ -1302,7 +1251,12 @@ def _download_spotify_queries_with_ytdlp(queries, target_dir: Path, progress_log
         query_ok = False
         try:
             with YoutubeDL(ydl_opts) as ydl:
-                ydl.download([f"ytsearch1:{query}"])
+                info = ydl.extract_info(f"ytsearch1:{query}", download=True)
+            if embed_extras and isinstance(info, dict):
+                for entry in iter_downloaded_entries(info):
+                    mp3_path = extract_entry_final_path(entry)
+                    if mp3_path:
+                        write_mp3_tags(mp3_path, entry, embed_extras=True, user_agents=USER_AGENTS, log=progress_logger.add_log)
             query_ok = True
         except Exception as e:
             err_text = str(e)
@@ -1328,7 +1282,7 @@ def _download_spotify_queries_with_ytdlp(queries, target_dir: Path, progress_log
     return count, failed
 
 
-def download_spotify(url: str, is_playlist: bool) -> None:
+def download_spotify(url: str, is_playlist: bool, embed_extras: bool = False) -> None:
     subfolder = "Playlist" if is_playlist else "Single"
     target_dir = DOWNLOADS_ROOT / "SPOTIFY" / subfolder
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -1359,7 +1313,7 @@ def download_spotify(url: str, is_playlist: bool) -> None:
     if queries:
         try:
             progress_logger.add_log(f"Loaded {len(queries)} metadata query item(s)", "info")
-            downloaded, failed = _download_spotify_queries_with_ytdlp(queries, target_dir, progress_logger)
+            downloaded, failed = _download_spotify_queries_with_ytdlp(queries, target_dir, progress_logger, embed_extras=embed_extras)
             progress_logger.mark_complete(f"Downloaded {downloaded} track(s); skipped {failed}.")
             progress_logger.add_log(f"✓ Downloaded {downloaded} track(s) → {target_dir}", "success")
             if failed:
@@ -1395,42 +1349,65 @@ def drain_pending_input():
             pass
 
 
-def read_key():
-    """Cross-platform arrow key / Enter detection."""
+def read_key(timeout: float = 0.05):
+    """Cross-platform non-blocking arrow key / Enter detection."""
     if platform.system() == "Windows":
         import msvcrt
+        if not msvcrt.kbhit():
+            time.sleep(timeout)
+            return None
         k = msvcrt.getch()
-        if k == b'\xe0':
+        if k in (b'\xe0', b'\x00') and msvcrt.kbhit():
             k2 = msvcrt.getch()
-            if k2 == b'H': return "UP"
-            if k2 == b'P': return "DOWN"
+            if k2 == b'H':
+                return "UP"
+            if k2 == b'P':
+                return "DOWN"
         elif k == b'\r':
             return "ENTER"
         elif k == b'\x03':
             raise KeyboardInterrupt
         return None
-    else:
-        import tty, termios, select
-        if not sys.stdin.isatty():
-            return None
-        fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
-        try:
-            tty.setraw(fd)
-            rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-            if rlist:
-                ch = sys.stdin.read(1)
-                if ch == "\x1b":
-                    ch2 = sys.stdin.read(1)
-                    ch3 = sys.stdin.read(1)
-                    seq = ch + ch2 + ch3
-                    if seq == "\x1b[A": return "UP"
-                    if seq == "\x1b[B": return "DOWN"
-                if ch in ("\r", "\n"): return "ENTER"
-                if ch == "\x03": raise KeyboardInterrupt
-            return None
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    import tty, termios, select
+    if not sys.stdin.isatty():
+        time.sleep(timeout)
+        return None
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+        if rlist:
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":
+                ch2 = sys.stdin.read(1)
+                ch3 = sys.stdin.read(1)
+                seq = ch + ch2 + ch3
+                if seq == "\x1b[A":
+                    return "UP"
+                if seq == "\x1b[B":
+                    return "DOWN"
+            if ch in ("\r", "\n"):
+                return "ENTER"
+            if ch == "\x03":
+                raise KeyboardInterrupt
+        return None
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def select_mode_with_animation() -> bool:
+    """Vanilla mode selection shown without starfield animation."""
+    clear_screen()
+    console.print(_compose_plain_splash([
+        "Mode Selection",
+        " 1. Single Item",
+        " 2. Playlist",
+    ]))
+    mode_input = console.input(Text("→ ", style=COL_ACC)).strip()
+    return mode_input == "2"
+
 
 # ──────────────────────────────────────────────
 # Primary application loop
@@ -1438,73 +1415,77 @@ def read_key():
 def main_loop():
     categories = ["YouTube Video (MP4)", "YouTube Music (MP3)", "Spotify", "Exit"]
     selected_index = 0
+    STARFIELD.start()
 
-    # FIX: Clear any leftover keypresses from previous flows/countdowns
     drain_pending_input()
-
-    # Now safe to show the splash (Spotify warning won't be skipped)
     display_full_splash()
 
     while True:
-        display_clean_splash()
-
-        console.print(Text("Main Category Selection", style=COL_TITLE))
-        for i, category in enumerate(categories):
-            prefix = "→ " if i == selected_index else " "
-            style = COL_ACC if i == selected_index else "white"
-            console.print(Text(prefix + category, style=style))
-        console.print(Text("\n↑ ↓ to navigate • Enter to select • Ctrl+C to quit", style=COL_ACC))
-
         try:
-            key = read_key()
-            if key == "UP":
-                selected_index = (selected_index - 1) % len(categories)
-            elif key == "DOWN":
-                selected_index = (selected_index + 1) % len(categories)
-            elif key == "ENTER":
-                if selected_index == 3:
-                    console.print(Text("Thank you for using CrystalMedia. Exiting.", style=COL_GOOD))
-                    pause_for_reading("Shutting down", 15)
-                    sys.exit(0)
-                category_choice = str(selected_index + 1)
+            with Live(console=console, refresh_per_second=60, screen=True) as live:
+                while True:
+                    live.update(build_main_menu_frame(categories, selected_index), refresh=True)
+                    key = read_key(timeout=1 / 60)
+                    if key == "UP":
+                        selected_index = (selected_index - 1) % len(categories)
+                    elif key == "DOWN":
+                        selected_index = (selected_index + 1) % len(categories)
+                    elif key == "ENTER":
+                        break
 
-                display_clean_splash()
-                console.print(Text("Mode Selection", style=COL_TITLE))
-                console.print(Text(" 1. Single Item", style=COL_MENU))
-                console.print(Text(" 2. Playlist", style=COL_MENU))
-                mode_input = console.input(Text("→ ", style=COL_ACC)).strip()
-                is_playlist = mode_input == "2"
+            if selected_index == 3:
+                STARFIELD.stop()
+                console.print(Text("Thank you for using CrystalMedia. Exiting.", style=COL_GOOD))
+                pause_for_reading("Shutting down", 15)
+                sys.exit(0)
 
-                display_clean_splash()
-                url_input = console.input(Text("Resource URL → ", style=COL_ACC)).strip()
+            category_choice = str(selected_index + 1)
+            STARFIELD.stop()
+            clear_screen()
 
-                display_clean_splash()
+            is_playlist = select_mode_with_animation()
 
-                if category_choice == "1":
-                    download_youtube(url_input, "video", is_playlist)
-                elif category_choice == "2":
-                    download_youtube(url_input, "audio", is_playlist)
-                elif category_choice == "3":
-                    download_spotify(url_input, is_playlist)
+            display_clean_splash()
+            url_input = console.input(Text("Resource URL → ", style=COL_ACC)).strip()
 
-                console.input(Text("\nPress Enter to continue...", style=COL_ACC))
+            display_clean_splash()
+            embed_extras = select_embed_extras()
+
+            display_clean_splash()
+            clear_screen()
+
+            if category_choice == "1":
+                download_youtube(url_input, "video", is_playlist, embed_extras=embed_extras)
+            elif category_choice == "2":
+                download_youtube(url_input, "audio", is_playlist, embed_extras=embed_extras)
+            elif category_choice == "3":
+                download_spotify(url_input, is_playlist, embed_extras=embed_extras)
+
+            console.input(Text("\nPress Enter to continue...", style=COL_ACC))
+            STARFIELD.start()
 
         except KeyboardInterrupt:
             console.print()
             console.print(Text("Keyboard interrupt detected. Returning to main menu.", style=COL_WARN))
             pause_for_reading("Interrupt acknowledged", 15)
             drain_pending_input()
+            STARFIELD.start()
             display_full_splash()
         except Exception as e:
+            STARFIELD.stop()
+            trace = traceback.format_exc()
+            log_crash(f"Unexpected fatal error: {str(e)}")
+            log_crash(trace)
             console.print(Panel(
-                Text(f"Unexpected error: {str(e)}", style="bold red"),
-                title="Error",
+                Text(
+                    f"Unexpected fatal error: {str(e)}\n\nDetails were written to: {CRASH_LOG}",
+                    style="bold red"
+                ),
+                title="Fatal Error",
                 border_style="red"
             ))
-            log_crash(f"Unexpected error: {str(e)}")
-            pause_for_reading("Error — copy the message above", 15)
-            console.print(Text("Recovery in progress — returning to main menu.", style=COL_WARN))
-            pause_for_reading("Resuming", 15)
+            pause_for_reading("Fatal error — application will exit", 20)
+            sys.exit(1)
 
 if __name__ == "__main__":
     main_loop()

@@ -16,7 +16,8 @@ dependencies = [
   "yt-dlp[default,curl-cffi]",
   "spotdl",
   "rich",
-  "pyfiglet"
+  "pyfiglet",
+  "mutagen"
 ]
 keywords = ["youtube", "spotify", "downloader", "cli", "yt-dlp"]
 classifiers = [
