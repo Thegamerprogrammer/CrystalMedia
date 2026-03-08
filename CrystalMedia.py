@@ -386,9 +386,10 @@ def clear_screen():
     try:
         console.clear()
     except Exception:
-        # ANSI fallback for environments where Rich clear is unavailable.
-        sys.stdout.write("\033[2J\033[H")
-        sys.stdout.flush()
+        pass
+    # Hard-reset scrollback + screen to reduce starfield residue artifacts.
+    sys.stdout.write("\033[2J\033[3J\033[H")
+    sys.stdout.flush()
 
 # ──────────────────────────────────────────────
 # Directory structure
@@ -551,6 +552,11 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         "http_headers": {"User-Agent": random.choice(USER_AGENTS)},
         "remux_video": "mp4",
         "format_sort": ["ext:mp4:m4a"],
+        "ignoreerrors": True,
+        "socket_timeout": 20,
+        "retries": 10 if is_playlist else 20,
+        "extractor_retries": 3,
+        "file_access_retries": 3,
     }
     if is_playlist:
         options.update({"sleep_requests": 2, "sleep_interval": 5, "max_sleep_interval": 15})
@@ -568,6 +574,8 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
 def select_option_menu(title: str, options: list[str], default_index: int = 0) -> int:
     """Animated arrow-key selection menu that keeps starfield running."""
     selected = max(0, min(default_index, len(options) - 1))
+    STARFIELD.start()
+    clear_screen()
     with Live(console=console, refresh_per_second=60, screen=True) as live:
         while True:
             lines = [
@@ -583,50 +591,39 @@ def select_option_menu(title: str, options: list[str], default_index: int = 0) -
             elif key == "DOWN":
                 selected = (selected + 1) % len(options)
             elif key == "ENTER":
+                clear_screen()
                 return selected
 
 
 def select_mp3_bitrate() -> str:
-    clear_screen()
-    console.print(_compose_plain_splash([
-        "MP3 Bitrate Selection",
-        " 1. Low (96 kbps)",
-        " 2. Medium (128 kbps)",
-        " 3. Standard (192 kbps) [default]",
-        " 4. High (256 kbps)",
-        " 5. Insane (320 kbps)",
-    ]))
-    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "3"
-    return {"1": "96", "2": "128", "3": "192", "4": "256", "5": "320"}.get(choice, "192")
+    options = ["Low (96 kbps)", "Medium (128 kbps)", "Standard (192 kbps) [default]", "High (256 kbps)", "Insane (320 kbps)"]
+    selected = select_option_menu("MP3 Bitrate Selection", options, default_index=2)
+    return ["96", "128", "192", "256", "320"][selected]
 
 def select_mp4_quality() -> str:
-    clear_screen()
-    console.print(_compose_plain_splash([
-        "MP4 Quality Selection",
-        " 1. Low (~360p)",
-        " 2. Medium (~480p–720p)",
-        " 3. High (~720p–1080p)",
-        " 4. Best (highest available) [default]",
-    ]))
-    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "4"
-    if choice == "1":
+    options = [
+        "Low (~360p)",
+        "Medium (~480p–720p)",
+        "High (~720p–1080p)",
+        "Best (highest available) [default]",
+    ]
+    choice_idx = select_option_menu("MP4 Quality Selection", options, default_index=3)
+    if choice_idx == 0:
         return "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-    if choice == "2":
+    if choice_idx == 1:
         return "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-    if choice == "3":
+    if choice_idx == 2:
         return "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
     return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
 
 def select_embed_extras() -> bool:
-    clear_screen()
-    console.print(_compose_plain_splash([
+    selected = select_option_menu(
         "Embed extras (lyrics + art + subtitle fallback + metadata)",
-        " 1. Yes (recommended for MP3)",
-        " 2. No",
-    ]))
-    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "1"
-    return choice == "1"
+        ["Yes (recommended for MP3)", "No"],
+        default_index=0,
+    )
+    return selected == 0
 
 
 
@@ -771,6 +768,7 @@ def to_js_runtime_option(runtime_list):
     return {runtime: {} for runtime in runtime_list}
 
 def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extras: bool = False) -> None:
+    title = "Unknown"
     try:
         with YoutubeDL({"quiet": True}) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -778,8 +776,8 @@ def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extra
             if is_playlist:
                 title = info.get('playlist_title', title) or title
         console.print(Text("Downloading: ", style=COL_ACC), end="")
-        console.print(Text(title, style="bold yellow"))
-    except:
+        console.print(Text(title, style=COL_ACC))
+    except Exception:
         console.print(Text("Could not extract title — downloading anyway...", style=COL_WARN))
 
     subfolder = "Playlist" if is_playlist else "Single"
@@ -793,10 +791,14 @@ def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extra
 
     runtime_preference = select_js_runtime_preference()
 
+    STARFIELD.stop()
+    clear_screen()
+
     # Initialize fixed progress logger
     progress_logger = FixedProgressLogger(console)
     progress_logger.start()
     progress_logger.add_log(f"Starting {mode} {content_type.upper()} download", "info")
+    progress_logger.add_log(f"Title: {title}", "info")
 
     class FixedYellowLogger:
         def __init__(self, logger):
@@ -876,8 +878,6 @@ def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extra
         else:
             options["js_runtimes"] = js_runtime_option
         progress_logger.add_log(f"JS runtime try {runtime_try}/{len(runtime_profiles)} → {runtime_value}", "info")
-        console.print(Text(f"Trying JS runtime profile: {runtime_value}", style=COL_ACC))
-
         while retry_count < max_retries:
             try:
                 with YoutubeDL(options) as downloader:
@@ -1419,15 +1419,84 @@ def read_key(timeout: float = 0.05):
 
 
 def select_mode_with_animation() -> bool:
-    """Vanilla mode selection shown without starfield animation."""
-    clear_screen()
-    console.print(_compose_plain_splash([
-        "Mode Selection",
-        " 1. Single Item",
-        " 2. Playlist",
-    ]))
-    mode_input = console.input(Text("→ ", style=COL_ACC)).strip()
-    return mode_input == "2"
+    """Mode selection with the same topmost animated menu style."""
+    selected = select_option_menu("Mode Selection", ["Single Item", "Playlist"], default_index=0)
+    return selected == 1
+
+
+def prompt_resource_url_with_animation() -> str:
+    """Capture URL while keeping the starfield splash visible and animated."""
+    buffer: list[str] = []
+    STARFIELD.start()
+
+    if platform.system() == "Windows":
+        import msvcrt
+        with Live(console=console, refresh_per_second=60, screen=True) as live:
+            while True:
+                lines = [
+                    "",
+                    f"Resource URL → {''.join(buffer)}",
+                    "",
+                    "Type URL • Backspace to edit • Enter to continue • Ctrl+C to cancel",
+                ]
+                live.update(_compose_splash_frame(lines), refresh=True)
+                if not msvcrt.kbhit():
+                    time.sleep(1 / 60)
+                    continue
+                ch = msvcrt.getwch()
+                if ch in ("\r", "\n"):
+                    clear_screen()
+                    return ''.join(buffer).strip()
+                if ch == "\x03":
+                    raise KeyboardInterrupt
+                if ch in ("\b", "\x7f"):
+                    if buffer:
+                        buffer.pop()
+                    continue
+                if ch in ("\x00", "\xe0"):
+                    if msvcrt.kbhit():
+                        msvcrt.getwch()
+                    continue
+                if ch.isprintable():
+                    buffer.append(ch)
+    else:
+        import tty, termios, select
+        if not sys.stdin.isatty():
+            display_full_splash()
+            return console.input(Text("Resource URL → ", style=COL_ACC)).strip()
+
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            with Live(console=console, refresh_per_second=60, screen=True) as live:
+                while True:
+                    lines = [
+                        "",
+                        f"Resource URL → {''.join(buffer)}",
+                        "",
+                        "Type URL • Backspace to edit • Enter to continue • Ctrl+C to cancel",
+                    ]
+                    live.update(_compose_splash_frame(lines), refresh=True)
+                    ready, _, _ = select.select([sys.stdin], [], [], 1 / 60)
+                    if not ready:
+                        continue
+                    ch = sys.stdin.read(1)
+                    if ch in ("\r", "\n"):
+                        clear_screen()
+                        return ''.join(buffer).strip()
+                    if ch == "\x03":
+                        raise KeyboardInterrupt
+                    if ch in ("\x7f", "\b"):
+                        if buffer:
+                            buffer.pop()
+                        continue
+                    if ch == "\x1b":
+                        continue
+                    if ch.isprintable():
+                        buffer.append(ch)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
 # ──────────────────────────────────────────────
@@ -1461,18 +1530,16 @@ def main_loop():
                 sys.exit(0)
 
             category_choice = str(selected_index + 1)
-            STARFIELD.stop()
             clear_screen()
+            STARFIELD.start()
 
             is_playlist = select_mode_with_animation()
+            clear_screen()
 
-            display_clean_splash()
-            url_input = console.input(Text("Resource URL → ", style=COL_ACC)).strip()
+            url_input = prompt_resource_url_with_animation()
+            clear_screen()
 
-            display_clean_splash()
             embed_extras = select_embed_extras()
-
-            display_clean_splash()
             clear_screen()
 
             if category_choice == "1":
@@ -1480,6 +1547,8 @@ def main_loop():
             elif category_choice == "2":
                 download_youtube(url_input, "audio", is_playlist, embed_extras=embed_extras)
             elif category_choice == "3":
+                STARFIELD.stop()
+                clear_screen()
                 download_spotify(url_input, is_playlist, embed_extras=embed_extras)
 
             console.input(Text("\nPress Enter to continue...", style=COL_ACC))
