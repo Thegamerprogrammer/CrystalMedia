@@ -262,7 +262,6 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
             if c < width and ch != " ":
                 canvas[row][c] = ch
 
-
     info_row = min(len(canvas) - 2, start_row + len(FIGLET_ART_LINES))
     for text in ("v4", "-" * min(width - 4, 60)):
         left = 2
@@ -273,7 +272,6 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
                 if c < width:
                     canvas[info_row][c] = ch
         info_row += 1
-
 
     if body_lines:
         body_start = min(len(canvas) - 1, info_row)
@@ -290,6 +288,15 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
                     canvas[row][c] = ch
 
     return Text('\n'.join(''.join(row) for row in canvas), style='#A5D8FF')
+
+
+def _compose_plain_splash(body_lines: list[str] | None = None) -> Text:
+    """Render vanilla CrystalMedia splash without animated starfield background."""
+    width = max(80, console.size.width)
+    lines = [*FIGLET_ART_LINES, "v4", "-" * min(width - 4, 60)]
+    if body_lines:
+        lines.extend(body_lines)
+    return Text("\n".join(lines), style=COL_MENU)
 
 # ──────────────────────────────────────────────
 # List imported libraries with style
@@ -361,7 +368,7 @@ def display_full_splash():
 
 def display_clean_splash():
     clear_screen()
-    console.print(_compose_splash_frame())
+    console.print(_compose_plain_splash())
 
 
 def build_main_menu_frame(categories, selected_index) -> Text:
@@ -580,40 +587,43 @@ def select_option_menu(title: str, options: list[str], default_index: int = 0) -
 
 
 def select_mp3_bitrate() -> str:
-    options = [
-        "Low (96 kbps)",
-        "Medium (128 kbps)",
-        "Standard (192 kbps) [default]",
-        "High (256 kbps)",
-        "Insane (320 kbps)",
-    ]
-    idx = select_option_menu("MP3 Bitrate Selection", options, default_index=2)
-    return ["96", "128", "192", "256", "320"][idx]
+    console.print(_compose_plain_splash([
+        "MP3 Bitrate Selection",
+        " 1. Low (96 kbps)",
+        " 2. Medium (128 kbps)",
+        " 3. Standard (192 kbps) [default]",
+        " 4. High (256 kbps)",
+        " 5. Insane (320 kbps)",
+    ]))
+    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "3"
+    return {"1": "96", "2": "128", "3": "192", "4": "256", "5": "320"}.get(choice, "192")
 
 def select_mp4_quality() -> str:
-    options = [
-        "Low (~360p)",
-        "Medium (~480p–720p)",
-        "High (~720p–1080p)",
-        "Best (highest available) [default]",
-    ]
-    idx = select_option_menu("MP4 Quality Selection", options, default_index=3)
-    if idx == 0:
+    console.print(_compose_plain_splash([
+        "MP4 Quality Selection",
+        " 1. Low (~360p)",
+        " 2. Medium (~480p–720p)",
+        " 3. High (~720p–1080p)",
+        " 4. Best (highest available) [default]",
+    ]))
+    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "4"
+    if choice == "1":
         return "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-    if idx == 1:
+    if choice == "2":
         return "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-    if idx == 2:
+    if choice == "3":
         return "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
     return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
 
 def select_embed_extras() -> bool:
-    idx = select_option_menu(
+    console.print(_compose_plain_splash([
         "Embed extras (lyrics + art + subtitle fallback + metadata)",
-        ["Yes (recommended for MP3)", "No"],
-        default_index=0,
-    )
-    return idx == 0
+        " 1. Yes (recommended for MP3)",
+        " 2. No",
+    ]))
+    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "1"
+    return choice == "1"
 
 
 
@@ -723,12 +733,14 @@ def extract_final_path_from_info(final_info):
 
 
 def select_js_runtime_preference() -> str:
-    idx = select_option_menu(
+    console.print(_compose_plain_splash([
         "JavaScript Runtime Preference",
-        ["Auto fallback (recommended)", "Prefer Deno first", "Prefer Node first"],
-        default_index=0,
-    )
-    return ["auto", "deno", "node"][idx]
+        " 1. Auto fallback (recommended)",
+        " 2. Prefer Deno first",
+        " 3. Prefer Node first",
+    ]))
+    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "1"
+    return {"1": "auto", "2": "deno", "3": "node"}.get(choice, "auto")
 
 
 def build_js_runtime_profiles(preference: str):
@@ -1403,25 +1415,14 @@ def read_key(timeout: float = 0.05):
 
 
 def select_mode_with_animation() -> bool:
-    """Animated mode selection (False=single, True=playlist)."""
-    options = ["Single Item", "Playlist"]
-    selected = 0
-    with Live(console=console, refresh_per_second=60, screen=True) as live:
-        while True:
-            lines = [
-                "Mode Selection",
-                *[("→ " if i == selected else "  ") + f"{i + 1}. {opt}" for i, opt in enumerate(options)],
-                "",
-                "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
-            ]
-            live.update(_compose_splash_frame(lines), refresh=True)
-            key = read_key(timeout=1 / 60)
-            if key == "UP":
-                selected = (selected - 1) % len(options)
-            elif key == "DOWN":
-                selected = (selected + 1) % len(options)
-            elif key == "ENTER":
-                return selected == 1
+    """Vanilla mode selection shown without starfield animation."""
+    console.print(_compose_plain_splash([
+        "Mode Selection",
+        " 1. Single Item",
+        " 2. Playlist",
+    ]))
+    mode_input = console.input(Text("→ ", style=COL_ACC)).strip()
+    return mode_input == "2"
 
 
 # ──────────────────────────────────────────────
@@ -1455,13 +1456,9 @@ def main_loop():
                 sys.exit(0)
 
             category_choice = str(selected_index + 1)
+            STARFIELD.stop()
 
-            display_clean_splash()
-            console.print(Text("Mode Selection", style=COL_TITLE))
-            console.print(Text(" 1. Single Item", style=COL_MENU))
-            console.print(Text(" 2. Playlist", style=COL_MENU))
-            mode_input = console.input(Text("→ ", style=COL_ACC)).strip()
-            is_playlist = mode_input == "2"
+            is_playlist = select_mode_with_animation()
 
             display_clean_splash()
             url_input = console.input(Text("Resource URL → ", style=COL_ACC)).strip()
@@ -1479,12 +1476,14 @@ def main_loop():
                 download_spotify(url_input, is_playlist, embed_extras=embed_extras)
 
             console.input(Text("\nPress Enter to continue...", style=COL_ACC))
+            STARFIELD.start()
 
         except KeyboardInterrupt:
             console.print()
             console.print(Text("Keyboard interrupt detected. Returning to main menu.", style=COL_WARN))
             pause_for_reading("Interrupt acknowledged", 15)
             drain_pending_input()
+            STARFIELD.start()
             display_full_splash()
         except Exception as e:
             STARFIELD.stop()

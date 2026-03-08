@@ -35,13 +35,27 @@ class StarfieldBackground:
 
     def _new_star(self):
         z = random.randint(1, self._depth)
+        screen_x = random.randint(0, self.width - 1)
+        screen_y = random.randint(0, self.height - 1)
+        x = int(((screen_x - self._bounds_x) * z) / max(1, self._bounds_x))
+        y = int(((screen_y - self._bounds_y) * z) / max(1, self._bounds_y))
         return {
-            "x": random.randint(-self._bounds_x, self._bounds_x),
-            "y": random.randint(-self._bounds_y, self._bounds_y),
+            "x": x,
+            "y": y,
             "z": z,
             "pz": z,
             "speed": random.choice([1, 1, 1, 2]),
         }
+
+    def _reset_star(self, star: dict):
+        z = self._depth
+        screen_x = random.randint(0, self.width - 1)
+        screen_y = random.randint(0, self.height - 1)
+        star["x"] = int(((screen_x - self._bounds_x) * z) / max(1, self._bounds_x))
+        star["y"] = int(((screen_y - self._bounds_y) * z) / max(1, self._bounds_y))
+        star["z"] = z
+        star["pz"] = z
+        star["speed"] = random.choice([1, 1, 1, 2])
 
     def _refresh_terminal_size(self):
         term = shutil.get_terminal_size(fallback=(self.width, self.height))
@@ -80,11 +94,7 @@ class StarfieldBackground:
                     star["pz"] = star["z"]
                     star["z"] -= star["speed"]
                     if star["z"] <= 1:
-                        star["x"] = random.randint(-self._bounds_x, self._bounds_x)
-                        star["y"] = random.randint(-self._bounds_y, self._bounds_y)
-                        star["z"] = self._depth
-                        star["pz"] = self._depth
-                        star["speed"] = random.choice([1, 1, 1, 2])
+                        self._reset_star(star)
             time.sleep(1 / 60)
 
     def render(self) -> str:
