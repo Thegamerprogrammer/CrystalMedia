@@ -687,29 +687,25 @@ def select_option_menu(title: str, options: list[str], default_index: int = 0, s
     """Animated arrow-key selection menu that keeps starfield running."""
     selected = max(0, min(default_index, len(options) - 1))
     STARFIELD.start()
-    STARFIELD.freeze_size()
     clear_screen()
-    try:
-        with Live(console=console, refresh_per_second=60, screen=True) as live:
-            while True:
-                lines = [
-                    title,
-                    *( [subtitle] if subtitle else [] ),
-                    *[("→ " if i == selected else "  ") + f"{i + 1}. {opt}" for i, opt in enumerate(options)],
-                    "",
-                    "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
-                ]
-                live.update(_compose_splash_frame(lines), refresh=True)
-                key = read_key(timeout=1 / 60)
-                if key == "UP":
-                    selected = (selected - 1) % len(options)
-                elif key == "DOWN":
-                    selected = (selected + 1) % len(options)
-                elif key == "ENTER":
-                    clear_screen()
-                    return selected
-    finally:
-        STARFIELD.unfreeze_size()
+    with Live(console=console, refresh_per_second=60, screen=True) as live:
+        while True:
+            lines = [
+                title,
+                *( [subtitle] if subtitle else [] ),
+                *[("→ " if i == selected else "  ") + f"{i + 1}. {opt}" for i, opt in enumerate(options)],
+                "",
+                "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
+            ]
+            live.update(_compose_splash_frame(lines), refresh=True)
+            key = read_key(timeout=1 / 60)
+            if key == "UP":
+                selected = (selected - 1) % len(options)
+            elif key == "DOWN":
+                selected = (selected + 1) % len(options)
+            elif key == "ENTER":
+                clear_screen()
+                return selected
 
 
 def select_mp3_bitrate() -> str:
@@ -1568,22 +1564,18 @@ def select_mode_with_animation() -> bool:
 def wait_for_enter_with_animation(message: str):
     """Keep starfield visible while waiting for Enter."""
     STARFIELD.start()
-    STARFIELD.freeze_size()
-    try:
-        with Live(console=console, refresh_per_second=60, screen=True) as live:
-            while True:
-                lines = [
-                    message,
-                    "",
-                    "Press Enter to continue...",
-                ]
-                live.update(_compose_splash_frame(lines), refresh=True)
-                key = read_key(timeout=1 / 60)
-                if key == "ENTER":
-                    clear_screen()
-                    return
-    finally:
-        STARFIELD.unfreeze_size()
+    with Live(console=console, refresh_per_second=60, screen=True) as live:
+        while True:
+            lines = [
+                message,
+                "",
+                "Press Enter to continue...",
+            ]
+            live.update(_compose_splash_frame(lines), refresh=True)
+            key = read_key(timeout=1 / 60)
+            if key == "ENTER":
+                clear_screen()
+                return
 
 
 def prompt_resource_url_with_animation() -> str:
@@ -1593,9 +1585,7 @@ def prompt_resource_url_with_animation() -> str:
 
     if platform.system() == "Windows":
         import msvcrt
-        STARFIELD.freeze_size()
-        try:
-            with Live(console=console, refresh_per_second=60, screen=True) as live:
+        with Live(console=console, refresh_per_second=60, screen=True) as live:
                 while True:
                     lines = [
                         "",
@@ -1623,8 +1613,6 @@ def prompt_resource_url_with_animation() -> str:
                         continue
                     if ch.isprintable():
                         buffer.append(ch)
-        finally:
-            STARFIELD.unfreeze_size()
     else:
         import tty, termios, select
         if not sys.stdin.isatty():
@@ -1635,7 +1623,6 @@ def prompt_resource_url_with_animation() -> str:
         old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
-            STARFIELD.freeze_size()
             with Live(console=console, refresh_per_second=60, screen=True) as live:
                 while True:
                     lines = [
@@ -1663,7 +1650,6 @@ def prompt_resource_url_with_animation() -> str:
                     if ch.isprintable():
                         buffer.append(ch)
         finally:
-            STARFIELD.unfreeze_size()
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
