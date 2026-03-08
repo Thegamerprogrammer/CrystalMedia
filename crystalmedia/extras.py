@@ -28,6 +28,7 @@ class StarfieldBackground:
         self._lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._size_freeze_count = 0
         self._depth = max(self.width, self.height)
         self._bounds_x = max(10, self.width // 2)
         self._bounds_y = max(6, self.height // 2)
@@ -56,6 +57,18 @@ class StarfieldBackground:
         star["z"] = z
         star["pz"] = z
         star["speed"] = random.choice([1, 1, 1, 2])
+
+    def freeze_size(self):
+        """Deprecated compatibility no-op; starfield now always tracks terminal size."""
+        return
+
+    def unfreeze_size(self):
+        """Deprecated compatibility no-op; starfield now always tracks terminal size."""
+        return
+
+    def force_unfreeze_size(self):
+        """Deprecated compatibility no-op; starfield now always tracks terminal size."""
+        return
 
     def _refresh_terminal_size(self):
         term = shutil.get_terminal_size(fallback=(self.width, self.height))
