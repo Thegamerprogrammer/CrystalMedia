@@ -593,8 +593,14 @@ class FixedProgressLogger:
                 self.layout["header"].update(self._header_panel())
             self.live.start()
             self.started = True
+            self._anim_running = True
+            self._anim_thread = threading.Thread(target=self._anim_loop, daemon=True)
+            self._anim_thread.start()
 
     def stop(self):
+        self._anim_running = False
+        if self._anim_thread and self._anim_thread.is_alive():
+            self._anim_thread.join(timeout=0.2)
         if self.started:
             self.live.stop()
             self.started = False
