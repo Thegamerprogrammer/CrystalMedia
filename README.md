@@ -37,6 +37,8 @@ crystalmedia
 
 On first launch, CrystalMedia runs a dependency preflight/status check and self-healing diagnostics. Runtime auto-install of dependencies is disabled for packaging safety; install/update dependencies through pip.
 
+It now also initializes output configuration once (`crystalmedia_config.json`) and defaults downloads/logs to `CrystalMedia_output/` unless you choose a custom path.
+
 ---
 
 
@@ -85,7 +87,7 @@ When the app starts, the flow is designed to feel game-like and guided:
 
 1. **Splash appears** (`CrystalMedia` logo + version)
 2. **Main menu** opens (YouTube Video / YouTube Music / Spotify / Exit)
-3. You choose:
+3. You choose (all animated with the starfield):
    - Single item or playlist
    - URL
    - MP4 quality or MP3 bitrate
@@ -144,7 +146,7 @@ If no CSV is found, CrystalMedia attempts direct Spotify page scraping fallback.
 
 CrystalMedia uses a fixed Rich layout to keep output readable:
 
-- **Header panel:** logo + current download context
+- **Animated splash header:** CrystalMedia logo + live starfield + current download context
 - **Progress panel:** one progress bar (download/processing/merging)
 - **Download Log panel:** compact rolling logs with truncation + color tags
 
@@ -155,7 +157,7 @@ This minimizes noisy terminal spam and keeps the interface focused.
 ## 📁 Output Structure
 
 ```text
-CrystalMedia/
+CrystalMedia_output/   # default root (configurable once at startup)
 ├── downloads/
 │   ├── YT VIDEO/
 │   │   ├── Single/
@@ -170,6 +172,8 @@ CrystalMedia/
     ├── log.txt
     ├── crash.txt
     └── deps.txt
+
+crystalmedia_config.json  # persists custom output_root
 ```
 
 ---
