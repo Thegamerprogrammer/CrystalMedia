@@ -233,7 +233,19 @@ Dependency Notices
 - This project uses third-party libraries including yt-dlp and relies on user-provided data/credentials. The authors do not control, modify, or distribute these dependencies in any infringing manner.
  Takedown Compliance
 - If you are a rights holder and believe content related to this project infringes your rights, contact [your email or GitHub issues] with a proper DMCA/copyright notice. We will comply with valid legal requests, including removal of repo access if required.
-- Indemnification Clause (if you wanna go full corporate-scary)
+- Indemnification
+- By using CrystalMedia, you agree to indemnify, defend, and hold harmless
+the authors, contributors, maintainers, and distributors of this software
+from and against any and all claims, damages, losses, liabilities, costs,
+or expenses (including reasonable attorneys' fees) arising from or related
+to your use, misuse, distribution, or operation of the software.
+
+- This includes, but is not limited to, claims involving copyright
+infringement, violations of platform terms of service, or violations of
+local, national, or international laws. The responsibility for ensuring
+that the use of CrystalMedia complies with applicable laws and platform
+policies rests solely with the user.
+
 - By using CrystalMedia, you agree to indemnify and hold harmless the authors, contributors, and any associated parties from any claims, damages, losses, liabilities, costs, or expenses (including attorneys' fees) arising from your use or misuse of the software.
 
 ## CrystalMedia does not circumvent digital rights management (DRM).
