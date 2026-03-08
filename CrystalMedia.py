@@ -386,9 +386,10 @@ def clear_screen():
     try:
         console.clear()
     except Exception:
-        # ANSI fallback for environments where Rich clear is unavailable.
-        sys.stdout.write("\033[2J\033[H")
-        sys.stdout.flush()
+        pass
+    # Hard-reset scrollback + screen to reduce starfield residue artifacts.
+    sys.stdout.write("\033[2J\033[3J\033[H")
+    sys.stdout.flush()
 
 # ──────────────────────────────────────────────
 # Directory structure
@@ -788,6 +789,9 @@ def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extra
     options = get_ydl_options(is_playlist, content_type)
 
     runtime_preference = select_js_runtime_preference()
+
+    STARFIELD.stop()
+    clear_screen()
 
     # Initialize fixed progress logger
     progress_logger = FixedProgressLogger(console)
@@ -1428,7 +1432,7 @@ def prompt_resource_url_with_animation() -> str:
         with Live(console=console, refresh_per_second=60, screen=True) as live:
             while True:
                 lines = [
-                    "Resource Input",
+                    "",
                     f"Resource URL → {''.join(buffer)}",
                     "",
                     "Type URL • Backspace to edit • Enter to continue • Ctrl+C to cancel",
@@ -1466,7 +1470,7 @@ def prompt_resource_url_with_animation() -> str:
             with Live(console=console, refresh_per_second=60, screen=True) as live:
                 while True:
                     lines = [
-                        "Resource Input",
+                        "",
                         f"Resource URL → {''.join(buffer)}",
                         "",
                         "Type URL • Backspace to edit • Enter to continue • Ctrl+C to cancel",
@@ -1543,6 +1547,8 @@ def main_loop():
             elif category_choice == "2":
                 download_youtube(url_input, "audio", is_playlist, embed_extras=embed_extras)
             elif category_choice == "3":
+                STARFIELD.stop()
+                clear_screen()
                 download_spotify(url_input, is_playlist, embed_extras=embed_extras)
 
             console.input(Text("\nPress Enter to continue...", style=COL_ACC))
