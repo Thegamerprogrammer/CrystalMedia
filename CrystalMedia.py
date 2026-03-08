@@ -609,6 +609,9 @@ class FixedProgressLogger:
                 self.layout["header"].update(self._header_panel())
             self.live.start()
             self.started = True
+            self._anim_running = True
+            self._anim_thread = threading.Thread(target=self._anim_loop, daemon=True)
+            self._anim_thread.start()
 
     def stop(self):
         STARFIELD.unfreeze_size()
