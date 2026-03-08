@@ -530,11 +530,15 @@ class FixedProgressLogger:
         )
 
     def _starfield_filler(self, line_count: int = 4) -> Text:
-        stars = STARFIELD.render().splitlines()
-        if not stars:
+        try:
+            stars = STARFIELD.render().splitlines()
+            if not stars:
+                return Text("", style=COL_MENU)
+            clipped = stars[:max(1, line_count)]
+            return Text("\n".join(clipped), style=COL_MENU)
+        except Exception:
+            # Decorative starfield should never block active downloads.
             return Text("", style=COL_MENU)
-        clipped = stars[:max(1, line_count)]
-        return Text("\n".join(clipped), style=COL_MENU)
 
     def _waiting_panel(self):
         waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
@@ -569,17 +573,25 @@ class FixedProgressLogger:
             log_text.append_text(log_entry)
             log_text.append("\n")
 
-        if self.logs:
-            log_content = Group(log_text, self._starfield_filler(max(2, 12 - len(self.logs))))
-        else:
-            log_content = Group(Text("Waiting for output...", style="dim"), self._starfield_filler(8))
+        try:
+            if self.logs:
+                log_content = Group(log_text, self._starfield_filler(max(2, 12 - len(self.logs))))
+            else:
+                log_content = Group(Text("Waiting for output...", style="dim"), self._starfield_filler(8))
 
-        log_panel = Panel(
-            log_content,
-            title=Text("Download Log", style=COL_MENU),
-            border_style=COL_MENU,
-            title_align="left",
-        )
+            log_panel = Panel(
+                log_content,
+                title=Text("Download Log", style=COL_MENU),
+                border_style=COL_MENU,
+                title_align="left",
+            )
+        except Exception:
+            log_panel = Panel(
+                log_text if self.logs else Text("Waiting for output...", style="dim"),
+                title=Text("Download Log", style=COL_MENU),
+                border_style=COL_MENU,
+                title_align="left",
+            )
         with self._lock:
             self.layout["logs"].update(log_panel)
 
@@ -589,7 +601,10 @@ class FixedProgressLogger:
         self.progress.update(self.task, completed=percent, description=description)
 
         with self._lock:
-            progress_content = Group(self.progress, self._starfield_filler(4))
+            try:
+                progress_content = Group(self.progress, self._starfield_filler(4))
+            except Exception:
+                progress_content = self.progress
             self.layout["progress"].update(
                 Panel(progress_content, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
             )
@@ -600,7 +615,10 @@ class FixedProgressLogger:
         else:
             self.progress.update(self.task, completed=100, description=description)
         with self._lock:
-            progress_content = Group(self.progress, self._starfield_filler(4))
+            try:
+                progress_content = Group(self.progress, self._starfield_filler(4))
+            except Exception:
+                progress_content = self.progress
             self.layout["progress"].update(
                 Panel(progress_content, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
             )
