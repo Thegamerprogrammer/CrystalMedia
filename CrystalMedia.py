@@ -27,15 +27,77 @@ import json
 import csv
 import webbrowser
 import traceback
+import threading
+import sysconfig
 from datetime import datetime
 
 
-APP_ROOT = Path("CrystalMedia")
+DEFAULT_OUTPUT_ROOT = Path("CrystalMedia_output")
+CONFIG_PATH = Path("crystalmedia_config.json")
+APP_ROOT = DEFAULT_OUTPUT_ROOT
 LOG_ROOT = APP_ROOT / "logs"
 DOWNLOADS_ROOT = APP_ROOT / "downloads"
 RUNTIME_LOG = LOG_ROOT / "log.txt"
 CRASH_LOG = LOG_ROOT / "crash.txt"
 DEPS_LOG = LOG_ROOT / "deps.txt"
+
+
+def _apply_output_root(root: Path):
+    global APP_ROOT, LOG_ROOT, DOWNLOADS_ROOT, RUNTIME_LOG, CRASH_LOG, DEPS_LOG
+    APP_ROOT = root
+    LOG_ROOT = APP_ROOT / "logs"
+    DOWNLOADS_ROOT = APP_ROOT / "downloads"
+    RUNTIME_LOG = LOG_ROOT / "log.txt"
+    CRASH_LOG = LOG_ROOT / "crash.txt"
+    DEPS_LOG = LOG_ROOT / "deps.txt"
+
+
+def configure_output_root_once():
+    """One-time output root selection persisted in local config."""
+    selected = DEFAULT_OUTPUT_ROOT
+    if CONFIG_PATH.exists():
+        try:
+            payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            configured = (payload.get("output_root") or "").strip()
+            if configured:
+                selected = Path(configured)
+        except Exception:
+            selected = DEFAULT_OUTPUT_ROOT
+    else:
+        print(f"Default output directory: {DEFAULT_OUTPUT_ROOT.resolve()}")
+        try:
+            answer = input("Use a custom output directory for downloads/logs? [y/N]: ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer in ("y", "yes"):
+            try:
+                custom = input("Enter full or relative output directory path: ").strip()
+            except EOFError:
+                custom = ""
+            if custom:
+                selected = Path(custom).expanduser()
+        CONFIG_PATH.write_text(json.dumps({"output_root": str(selected)}, indent=2), encoding="utf-8")
+
+    _apply_output_root(Path(selected).expanduser())
+
+
+def auto_add_python_scripts_to_path():
+    """Add detected Python Scripts/bin path to PATH for this process."""
+    candidates = []
+    scripts_path = sysconfig.get_path("scripts")
+    if scripts_path:
+        candidates.append(Path(scripts_path))
+    user_base = Path(sysconfig.get_config_var("userbase") or "").expanduser()
+    if user_base:
+        candidates.append(user_base / ("Scripts" if platform.system() == "Windows" else "bin"))
+
+    existing = [str(p) for p in candidates if str(p) and p.exists()]
+    if existing:
+        current = os.environ.get("PATH", "")
+        prefix = os.pathsep.join(existing)
+        if prefix not in current:
+            os.environ["PATH"] = prefix + os.pathsep + current
+        print(f"Auto PATH update (Python {sys.version_info.major}.{sys.version_info.minor}): {existing[0]}")
 
 
 def _ensure_app_layout():
@@ -85,6 +147,7 @@ def print_dependency_notice():
     print(" - rich + pyfiglet: terminal UI and splash rendering.")
     print(r"Windows PATH note: Scripts folder like %APPDATA%\Python\PythonXY\Scripts.")
     print("Linux/macOS PATH counterpart: ~/.local/bin and shell profile export PATH updates.")
+    print("CrystalMedia auto-adds detected Python scripts path to PATH for current session.")
 
 
 
@@ -104,6 +167,8 @@ def _runtime_dependency_snapshot():
         print(f" - {name}: {status}")
 
 
+configure_output_root_once()
+auto_add_python_scripts_to_path()
 _ensure_app_layout()
 check_log_rotation()
 install_exportify_vendor_requirements()
@@ -416,44 +481,59 @@ create_folders()
 # ──────────────────────────────────────────────
 
 class FixedProgressLogger:
-    """Fixed progress bar + scrolling log panel using Rich Layout"""
-    def __init__(self, console_obj, header_text: Text = None):
+    """Animated starfield-backed progress logger with fixed panels."""
+    def __init__(self, console_obj, header_lines: list[str] | None = None):
         self.console = console_obj
         self.logs = []
+        self.header_lines = header_lines or ["Download in progress"]
         self.layout = Layout()
         self.layout.split_column(
+            Layout(name="header", size=12),
             Layout(name="progress", size=8),
-            Layout(name="logs", size=16)
+            Layout(name="logs", size=16),
         )
         self.progress = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            console=self.console
+            console=self.console,
         )
         self.task = None
-        self.live = Live(self.layout, console=self.console, refresh_per_second=4)
-        self.max_logs = 12
-        self.max_log_width = 110
+        self.live = Live(self.layout, console=self.console, refresh_per_second=30, screen=True)
         self.layout["progress"].update(self._waiting_panel())
         self.started = False
+        self._lock = threading.Lock()
+        self._anim_running = False
+        self._anim_thread = None
+
+    def _header_panel(self):
+        return Panel(
+            _compose_splash_frame(self.header_lines),
+            border_style=COL_MENU,
+            title=Text("CrystalMedia", style=COL_MENU),
+            title_align="left",
+        )
 
     def _waiting_panel(self):
-        """Render spinner placeholder until progress data arrives."""
         waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
         return Panel(waiting_spinner, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
 
+    def _anim_loop(self):
+        while self._anim_running:
+            with self._lock:
+                self.layout["header"].update(self._header_panel())
+            time.sleep(1 / 30)
+
     def add_log(self, msg: str, level: str = "info"):
-        """Add message to log panel with color coding"""
         msg = strip_ansi(msg).replace("\n", " ").strip()
 
         if level == "error":
-            style = "red"
+            style = COL_ERR
         elif level == "warning":
-            style = "yellow"
+            style = COL_WARN
         elif level == "success":
-            style = "green"
+            style = COL_GOOD
         else:
             style = COL_MENU
 
@@ -473,36 +553,46 @@ class FixedProgressLogger:
             log_text if self.logs else Text("Waiting for output...", style="dim"),
             title=Text("Download Log", style=COL_MENU),
             border_style=COL_MENU,
-            title_align="left"
+            title_align="left",
         )
-        self.layout["logs"].update(log_panel)
+        with self._lock:
+            self.layout["logs"].update(log_panel)
 
     def update_progress(self, percent: float, description: str = "Downloading"):
-        """Update progress bar"""
         if self.task is None:
             self.task = self.progress.add_task(description, total=100)
         self.progress.update(self.task, completed=percent, description=description)
 
-        self.layout["progress"].update(
-            Panel(self.progress, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
-        )
+        with self._lock:
+            self.layout["progress"].update(
+                Panel(self.progress, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
+            )
 
     def mark_complete(self, description: str = "Download complete!"):
-        """Show a completed progress state even when file already exists."""
         if self.task is None:
             self.task = self.progress.add_task(description, total=100, completed=100)
         else:
             self.progress.update(self.task, completed=100, description=description)
-        self.layout["progress"].update(
-            Panel(self.progress, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
-        )
+        with self._lock:
+            self.layout["progress"].update(
+                Panel(self.progress, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
+            )
 
     def start(self):
         if not self.started:
+            STARFIELD.start()
+            with self._lock:
+                self.layout["header"].update(self._header_panel())
             self.live.start()
             self.started = True
+            self._anim_running = True
+            self._anim_thread = threading.Thread(target=self._anim_loop, daemon=True)
+            self._anim_thread.start()
 
     def stop(self):
+        self._anim_running = False
+        if self._anim_thread and self._anim_thread.is_alive():
+            self._anim_thread.join(timeout=0.2)
         if self.started:
             self.live.stop()
             self.started = False
@@ -512,16 +602,16 @@ class FixedProgressLogger:
         pause_for_reading(message, seconds)
 
 
-def build_download_header(title: str, mode: str, content_type: str, target_dir: Path) -> Text:
-    figlet = Figlet(font='slant')
-    art = figlet.renderText('CrystalMedia')
-    return Text.assemble(
-        (art, COL_TITLE),
-        ("v4\n", COL_ACC),
-        (("-" * 60) + "\n", COL_MENU),
-        (f"Downloading: {title}\n", COL_ACC),
-        (f"Initiating {mode} {content_type.upper()} download → {target_dir}", COL_MENU),
-    )
+
+
+def build_download_header(title: str, mode: str, content_type: str, target_dir: Path) -> list[str]:
+    return [
+        f"Downloading: {title}",
+        f"Mode: {mode} {content_type.upper()}",
+        f"Output: {target_dir}",
+    ]
+
+
 
 # ──────────────────────────────────────────────
 # YouTube download logic (native API + title display + improved logger)
@@ -733,15 +823,13 @@ def extract_final_path_from_info(final_info):
 
 
 def select_js_runtime_preference() -> str:
-    clear_screen()
-    console.print(_compose_plain_splash([
-        "JavaScript Runtime Preference",
-        " 1. Auto fallback (recommended)",
-        " 2. Prefer Deno first",
-        " 3. Prefer Node first",
-    ]))
-    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "1"
-    return {"1": "auto", "2": "deno", "3": "node"}.get(choice, "auto")
+    options = [
+        "Auto fallback (recommended)",
+        "Prefer Deno first",
+        "Prefer Node first",
+    ]
+    idx = select_option_menu("JavaScript Runtime Preference", options, default_index=0)
+    return ["auto", "deno", "node"][idx]
 
 
 def build_js_runtime_profiles(preference: str):
@@ -775,8 +863,11 @@ def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extra
             title = info.get('title', 'Unknown')
             if is_playlist:
                 title = info.get('playlist_title', title) or title
-        console.print(Text("Downloading: ", style=COL_ACC), end="")
-        console.print(Text(title, style=COL_ACC))
+        if is_playlist:
+            console.print(Text(f"Downloading playlist: {title}", style=COL_ACC))
+        else:
+            media_label = "video" if content_type == "video" else "audio"
+            console.print(Text(f"Downloading {media_label}: {title}", style=COL_ACC))
     except Exception:
         console.print(Text("Could not extract title — downloading anyway...", style=COL_WARN))
 
@@ -795,7 +886,8 @@ def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extra
     clear_screen()
 
     # Initialize fixed progress logger
-    progress_logger = FixedProgressLogger(console)
+    progress_header = build_download_header(title, mode, content_type, target_dir)
+    progress_logger = FixedProgressLogger(console, progress_header)
     progress_logger.start()
     progress_logger.add_log(f"Starting {mode} {content_type.upper()} download", "info")
     progress_logger.add_log(f"Title: {title}", "info")
@@ -1310,6 +1402,23 @@ def download_spotify(url: str, is_playlist: bool, embed_extras: bool = False) ->
 
     resolved_url = _resolve_spotify_url(url)
     queries = []
+    display_title = "Spotify playlist" if is_playlist else "Spotify audio"
+    try:
+        req = urllib.request.Request(
+            f"https://open.spotify.com/oembed?url={resolved_url}",
+            headers={"User-Agent": random.choice(USER_AGENTS)},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        title = (payload.get("title") or "").strip()
+        author = (payload.get("author_name") or "").strip()
+        if title:
+            display_title = f"{title} - {author}".strip(" -")
+    except Exception:
+        if is_playlist:
+            display_title = _playlist_display_name_from_url(resolved_url)
+
+    console.print(Text(f"Downloading spotify {'playlist' if is_playlist else 'audio'}: {display_title}", style=COL_ACC))
 
     try:
         if is_playlist or "/playlist/" in resolved_url or "/album/" in resolved_url:
@@ -1326,10 +1435,11 @@ def download_spotify(url: str, is_playlist: bool, embed_extras: bool = False) ->
         console.print(Text(f"Metadata parsing fallback triggered: {str(e)[:120]}", style=COL_WARN))
 
     mode = "Playlist" if is_playlist else "Single Item"
-    progress_header = build_download_header("Spotify fallback", mode, "audio", target_dir)
+    progress_header = build_download_header(display_title, mode, "audio", target_dir)
     progress_logger = FixedProgressLogger(console, progress_header)
     progress_logger.start()
     progress_logger.add_log("Spotify downloader (no-premium fallback mode)", "info")
+    progress_logger.add_log(f"Title: {display_title}", "info")
 
     if queries:
         try:
@@ -1540,7 +1650,6 @@ def main_loop():
             clear_screen()
 
             embed_extras = select_embed_extras()
-
             clear_screen()
 
             if category_choice == "1":
