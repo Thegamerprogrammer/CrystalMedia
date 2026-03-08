@@ -1419,6 +1419,80 @@ def select_mode_with_animation() -> bool:
     return selected == 1
 
 
+def prompt_resource_url_with_animation() -> str:
+    """Capture URL while keeping the starfield splash visible and animated."""
+    buffer: list[str] = []
+
+    if platform.system() == "Windows":
+        import msvcrt
+        with Live(console=console, refresh_per_second=60, screen=True) as live:
+            while True:
+                lines = [
+                    "Resource Input",
+                    f"Resource URL → {''.join(buffer)}",
+                    "",
+                    "Type URL • Backspace to edit • Enter to continue • Ctrl+C to cancel",
+                ]
+                live.update(_compose_splash_frame(lines), refresh=True)
+                if not msvcrt.kbhit():
+                    time.sleep(1 / 60)
+                    continue
+                ch = msvcrt.getwch()
+                if ch in ("\r", "\n"):
+                    clear_screen()
+                    return ''.join(buffer).strip()
+                if ch == "\x03":
+                    raise KeyboardInterrupt
+                if ch in ("\b", "\x7f"):
+                    if buffer:
+                        buffer.pop()
+                    continue
+                if ch in ("\x00", "\xe0"):
+                    if msvcrt.kbhit():
+                        msvcrt.getwch()
+                    continue
+                if ch.isprintable():
+                    buffer.append(ch)
+    else:
+        import tty, termios, select
+        if not sys.stdin.isatty():
+            display_full_splash()
+            return console.input(Text("Resource URL → ", style=COL_ACC)).strip()
+
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            with Live(console=console, refresh_per_second=60, screen=True) as live:
+                while True:
+                    lines = [
+                        "Resource Input",
+                        f"Resource URL → {''.join(buffer)}",
+                        "",
+                        "Type URL • Backspace to edit • Enter to continue • Ctrl+C to cancel",
+                    ]
+                    live.update(_compose_splash_frame(lines), refresh=True)
+                    ready, _, _ = select.select([sys.stdin], [], [], 1 / 60)
+                    if not ready:
+                        continue
+                    ch = sys.stdin.read(1)
+                    if ch in ("\r", "\n"):
+                        clear_screen()
+                        return ''.join(buffer).strip()
+                    if ch == "\x03":
+                        raise KeyboardInterrupt
+                    if ch in ("\x7f", "\b"):
+                        if buffer:
+                            buffer.pop()
+                        continue
+                    if ch == "\x1b":
+                        continue
+                    if ch.isprintable():
+                        buffer.append(ch)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
 # ──────────────────────────────────────────────
 # Primary application loop
 # ──────────────────────────────────────────────
@@ -1450,18 +1524,18 @@ def main_loop():
                 sys.exit(0)
 
             category_choice = str(selected_index + 1)
-            STARFIELD.stop()
             clear_screen()
+            STARFIELD.start()
 
             is_playlist = select_mode_with_animation()
+            clear_screen()
 
-            display_clean_splash()
-            url_input = console.input(Text("Resource URL → ", style=COL_ACC)).strip()
+            url_input = prompt_resource_url_with_animation()
+            clear_screen()
 
-            display_clean_splash()
             embed_extras = select_embed_extras()
 
-            display_clean_splash()
+            STARFIELD.stop()
             clear_screen()
 
             if category_choice == "1":
