@@ -77,7 +77,6 @@ Before install, you can explore a modern clickable mini site + complete visual d
 ![Age Restricted Troubleshooting](docs/media/14-stuck-age-restricted.svg)
 ![Missing Dependencies Troubleshooting](docs/media/15-stuck-missing-deps.svg)
 ![Output and Logs](docs/media/16-output-structure.svg)
-
 ---
 
 ## 🎮 Interactive Walkthrough

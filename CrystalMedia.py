@@ -565,6 +565,27 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         options["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": bitrate}]
     return options
 
+def select_option_menu(title: str, options: list[str], default_index: int = 0) -> int:
+    """Animated arrow-key selection menu that keeps starfield running."""
+    selected = max(0, min(default_index, len(options) - 1))
+    with Live(console=console, refresh_per_second=60, screen=True) as live:
+        while True:
+            lines = [
+                title,
+                *[("→ " if i == selected else "  ") + f"{i + 1}. {opt}" for i, opt in enumerate(options)],
+                "",
+                "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
+            ]
+            live.update(_compose_splash_frame(lines), refresh=True)
+            key = read_key(timeout=1 / 60)
+            if key == "UP":
+                selected = (selected - 1) % len(options)
+            elif key == "DOWN":
+                selected = (selected + 1) % len(options)
+            elif key == "ENTER":
+                return selected
+
+
 def select_mp3_bitrate() -> str:
     console.print(_compose_plain_splash([
         "MP3 Bitrate Selection",
