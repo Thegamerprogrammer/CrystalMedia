@@ -297,6 +297,7 @@ COL_MENU = "bold #D6E4FF"
 STARFIELD = StarfieldBackground()  # auto-sizes from terminal when available
 FIGLET = Figlet(font='slant')
 FIGLET_ART_LINES = FIGLET.renderText('CrystalMedia').rstrip('\n').splitlines()
+CURRENT_MEDIA_TITLE = ""
 
 
 def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
@@ -354,6 +355,64 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
 
     return Text('\n'.join(''.join(row) for row in canvas), style='#A5D8FF')
 
+
+
+
+def _compose_compact_splash_frame(body_lines: list[str] | None = None, height: int = 10) -> Text:
+    """Compact starfield+splash frame for panel headers (prevents clipping artifacts)."""
+    star_lines = STARFIELD.render().splitlines()
+    width = max((len(line) for line in star_lines), default=80)
+    header_rows = max(height, len(FIGLET_ART_LINES) + 3 + (len(body_lines or [])))
+    limited = [line.ljust(width) for line in star_lines[:header_rows]]
+    if len(limited) < header_rows:
+        limited.extend([" " * width for _ in range(header_rows - len(limited))])
+
+    canvas = [list(line) for line in limited]
+
+    def _blank_row(row: int, left: int, right: int):
+        if 0 <= row < len(canvas):
+            l = max(0, left)
+            r = min(width, right)
+            for c in range(l, r):
+                canvas[row][c] = " "
+
+    start_row = 0
+    for idx, line in enumerate(FIGLET_ART_LINES):
+        row = start_row + idx
+        if row >= len(canvas):
+            break
+        left = 2
+        _blank_row(row, left - 1, left + len(line) + 1)
+        for col, ch in enumerate(line):
+            c = left + col
+            if c < width and ch != " ":
+                canvas[row][c] = ch
+
+    info_row = min(len(canvas) - 2, start_row + len(FIGLET_ART_LINES))
+    for text_line in ("v4", "-" * min(width - 4, 60)):
+        left = 2
+        if 0 <= info_row < len(canvas):
+            _blank_row(info_row, left - 2, left + len(text_line) + 2)
+            for col, ch in enumerate(text_line):
+                c = left + col
+                if c < width:
+                    canvas[info_row][c] = ch
+        info_row += 1
+
+    if body_lines:
+        for idx, line in enumerate(body_lines):
+            row = info_row + idx
+            if row >= len(canvas):
+                break
+            text_line = line[: max(1, width - 4)]
+            left = 2
+            _blank_row(row, left - 1, left + len(text_line) + 1)
+            for col, ch in enumerate(text_line):
+                c = left + col
+                if c < width:
+                    canvas[row][c] = ch
+
+    return Text('\n'.join(''.join(row) for row in canvas), style=COL_MENU)
 
 def _compose_plain_splash(body_lines: list[str] | None = None) -> Text:
     """Render vanilla CrystalMedia splash without animated starfield background."""
@@ -509,7 +568,7 @@ class FixedProgressLogger:
 
     def _header_panel(self):
         return Panel(
-            _compose_splash_frame(self.header_lines),
+            _compose_compact_splash_frame(self.header_lines, height=11),
             border_style=COL_MENU,
             title=Text("CrystalMedia", style=COL_MENU),
             title_align="left",
@@ -661,7 +720,7 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         options["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": bitrate}]
     return options
 
-def select_option_menu(title: str, options: list[str], default_index: int = 0) -> int:
+def select_option_menu(title: str, options: list[str], default_index: int = 0, subtitle: str | None = None) -> int:
     """Animated arrow-key selection menu that keeps starfield running."""
     selected = max(0, min(default_index, len(options) - 1))
     STARFIELD.start()
@@ -670,6 +729,7 @@ def select_option_menu(title: str, options: list[str], default_index: int = 0) -
         while True:
             lines = [
                 title,
+                *( [subtitle] if subtitle else [] ),
                 *[("→ " if i == selected else "  ") + f"{i + 1}. {opt}" for i, opt in enumerate(options)],
                 "",
                 "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
@@ -687,7 +747,7 @@ def select_option_menu(title: str, options: list[str], default_index: int = 0) -
 
 def select_mp3_bitrate() -> str:
     options = ["Low (96 kbps)", "Medium (128 kbps)", "Standard (192 kbps) [default]", "High (256 kbps)", "Insane (320 kbps)"]
-    selected = select_option_menu("MP3 Bitrate Selection", options, default_index=2)
+    selected = select_option_menu("MP3 Bitrate Selection", options, default_index=2, subtitle=(f"Title: {CURRENT_MEDIA_TITLE}" if CURRENT_MEDIA_TITLE else None))
     return ["96", "128", "192", "256", "320"][selected]
 
 def select_mp4_quality() -> str:
@@ -697,7 +757,7 @@ def select_mp4_quality() -> str:
         "High (~720p–1080p)",
         "Best (highest available) [default]",
     ]
-    choice_idx = select_option_menu("MP4 Quality Selection", options, default_index=3)
+    choice_idx = select_option_menu("MP4 Quality Selection", options, default_index=3, subtitle=(f"Title: {CURRENT_MEDIA_TITLE}" if CURRENT_MEDIA_TITLE else None))
     if choice_idx == 0:
         return "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
     if choice_idx == 1:
@@ -856,13 +916,16 @@ def to_js_runtime_option(runtime_list):
     return {runtime: {} for runtime in runtime_list}
 
 def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extras: bool = False) -> None:
+    global CURRENT_MEDIA_TITLE
     title = "Unknown"
+    CURRENT_MEDIA_TITLE = ""
     try:
         with YoutubeDL({"quiet": True}) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'Unknown')
             if is_playlist:
                 title = info.get('playlist_title', title) or title
+        CURRENT_MEDIA_TITLE = title
         if is_playlist:
             console.print(Text(f"Downloading playlist: {title}", style=COL_ACC))
         else:
@@ -1046,12 +1109,14 @@ def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extra
         else:
             console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
         pause_for_reading("Download success — review above", 30)
+        CURRENT_MEDIA_TITLE = ""
         return
 
     progress_logger.add_log("Maximum retries reached", "error")
     progress_logger.stop()
     console.print(Text("Maximum retries reached. Check connection or try again later.", style=COL_ERR))
     pause_for_reading("Max retries — review above", 15)
+    CURRENT_MEDIA_TITLE = ""
 
 def _spotify_oembed_query(url: str) -> str:
     req = urllib.request.Request(f"https://open.spotify.com/oembed?url={url}", headers={"User-Agent": random.choice(USER_AGENTS)})
