@@ -262,6 +262,7 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
             if c < width and ch != " ":
                 canvas[row][c] = ch
 
+
     info_row = min(len(canvas) - 2, start_row + len(FIGLET_ART_LINES))
     for text in ("v4", "-" * min(width - 4, 60)):
         left = 2
@@ -272,6 +273,7 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
                 if c < width:
                     canvas[info_row][c] = ch
         info_row += 1
+
 
     if body_lines:
         body_start = min(len(canvas) - 1, info_row)
@@ -1454,7 +1456,12 @@ def main_loop():
 
             category_choice = str(selected_index + 1)
 
-            is_playlist = select_mode_with_animation()
+            display_clean_splash()
+            console.print(Text("Mode Selection", style=COL_TITLE))
+            console.print(Text(" 1. Single Item", style=COL_MENU))
+            console.print(Text(" 2. Playlist", style=COL_MENU))
+            mode_input = console.input(Text("→ ", style=COL_ACC)).strip()
+            is_playlist = mode_input == "2"
 
             display_clean_splash()
             url_input = console.input(Text("Resource URL → ", style=COL_ACC)).strip()
