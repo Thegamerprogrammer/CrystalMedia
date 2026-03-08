@@ -359,60 +359,43 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
 
 
 def _compose_compact_splash_frame(body_lines: list[str] | None = None, height: int = 10) -> Text:
-    """Compact starfield+splash frame for panel headers (prevents clipping artifacts)."""
+    """Compact starfield frame for panel headers without oversized figlet artifacts."""
     star_lines = STARFIELD.render().splitlines()
     width = max((len(line) for line in star_lines), default=80)
-    header_rows = max(height, len(FIGLET_ART_LINES) + 3 + (len(body_lines or [])))
+    header_rows = max(height, 8 + (len(body_lines or [])))
     limited = [line.ljust(width) for line in star_lines[:header_rows]]
     if len(limited) < header_rows:
         limited.extend([" " * width for _ in range(header_rows - len(limited))])
 
     canvas = [list(line) for line in limited]
 
-    def _blank_row(row: int, left: int, right: int):
-        if 0 <= row < len(canvas):
-            l = max(0, left)
-            r = min(width, right)
-            for c in range(l, r):
-                canvas[row][c] = " "
-
-    start_row = 0
-    for idx, line in enumerate(FIGLET_ART_LINES):
-        row = start_row + idx
-        if row >= len(canvas):
-            break
+    def _write_line(row: int, value: str):
+        if not (0 <= row < len(canvas)):
+            return
+        text_line = value[: max(1, width - 4)]
         left = 2
-        _blank_row(row, left - 1, left + len(line) + 1)
-        for col, ch in enumerate(line):
-            c = left + col
-            if c < width and ch != " ":
-                canvas[row][c] = ch
+        for c in range(left - 1, min(width, left + len(text_line) + 1)):
+            canvas[row][c] = " "
+        for idx, ch in enumerate(text_line):
+            col = left + idx
+            if col < width:
+                canvas[row][col] = ch
 
-    info_row = min(len(canvas) - 2, start_row + len(FIGLET_ART_LINES))
-    for text_line in ("v4", "-" * min(width - 4, 60)):
-        left = 2
-        if 0 <= info_row < len(canvas):
-            _blank_row(info_row, left - 2, left + len(text_line) + 2)
-            for col, ch in enumerate(text_line):
-                c = left + col
-                if c < width:
-                    canvas[info_row][c] = ch
-        info_row += 1
+    _write_line(1, "CrystalMedia")
+    _write_line(2, "v4")
+    _write_line(3, "-" * min(width - 4, 60))
 
     if body_lines:
-        for idx, line in enumerate(body_lines):
-            row = info_row + idx
+        row = 4
+        for line in body_lines:
+            _write_line(row, line)
+            row += 1
             if row >= len(canvas):
                 break
-            text_line = line[: max(1, width - 4)]
-            left = 2
-            _blank_row(row, left - 1, left + len(text_line) + 1)
-            for col, ch in enumerate(text_line):
-                c = left + col
-                if c < width:
-                    canvas[row][c] = ch
 
     return Text('\n'.join(''.join(row) for row in canvas), style=COL_MENU)
+
+
 
 def _compose_plain_splash(body_lines: list[str] | None = None) -> Text:
     """Render vanilla CrystalMedia splash without animated starfield background."""
@@ -1105,10 +1088,9 @@ def download_youtube(url: str, content_type: str, is_playlist: bool, embed_extra
         progress_logger.add_log(f"✓ Download complete → {target_dir}", "success")
         progress_logger.wait_for_continue("Download success", 30)
         if final_path:
-            console.print(Text(f"Final file saved at: {final_path}", style=COL_GOOD))
+            wait_for_enter_with_animation(f"Final file saved at: {final_path}")
         else:
-            console.print(Text(f"Download complete → {target_dir}", style=COL_GOOD))
-        pause_for_reading("Download success — review above", 30)
+            wait_for_enter_with_animation(f"Download complete → {target_dir}")
         CURRENT_MEDIA_TITLE = ""
         return
 
@@ -1599,6 +1581,23 @@ def select_mode_with_animation() -> bool:
     return selected == 1
 
 
+def wait_for_enter_with_animation(message: str):
+    """Keep starfield visible while waiting for Enter."""
+    STARFIELD.start()
+    with Live(console=console, refresh_per_second=60, screen=True) as live:
+        while True:
+            lines = [
+                message,
+                "",
+                "Press Enter to continue...",
+            ]
+            live.update(_compose_splash_frame(lines), refresh=True)
+            key = read_key(timeout=1 / 60)
+            if key == "ENTER":
+                clear_screen()
+                return
+
+
 def prompt_resource_url_with_animation() -> str:
     """Capture URL while keeping the starfield splash visible and animated."""
     buffer: list[str] = []
@@ -1726,7 +1725,7 @@ def main_loop():
                 clear_screen()
                 download_spotify(url_input, is_playlist, embed_extras=embed_extras)
 
-            console.input(Text("\nPress Enter to continue...", style=COL_ACC))
+            wait_for_enter_with_animation("Operation complete")
             STARFIELD.start()
 
         except KeyboardInterrupt:
