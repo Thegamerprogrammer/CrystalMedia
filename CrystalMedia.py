@@ -520,6 +520,8 @@ class FixedProgressLogger:
         self.layout["logs"].update(self._waiting_logs_panel())
         self.started = False
         self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._anim_thread = None
 
     def _header_panel(self):
         return Panel(
@@ -548,6 +550,47 @@ class FixedProgressLogger:
     def _waiting_logs_panel(self):
         content = Group(Text("Waiting for output...", style="dim"), self._starfield_filler(8))
         return Panel(content, title=Text("Download Log", style=COL_MENU), border_style=COL_MENU, title_align="left")
+
+
+    def _render_log_panel(self):
+        log_text = Text()
+        for log_entry in self.logs:
+            log_text.append_text(log_entry)
+            log_text.append("\n")
+
+        if self.logs:
+            log_content = Group(log_text, self._starfield_filler(max(2, 12 - len(self.logs))))
+        else:
+            log_content = Group(Text("Waiting for output...", style="dim"), self._starfield_filler(8))
+
+        return Panel(
+            log_content,
+            title=Text("Download Log", style=COL_MENU),
+            border_style=COL_MENU,
+            title_align="left",
+        )
+
+    def _render_progress_panel(self):
+        if self.task is None:
+            waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
+            progress_content = Group(waiting_spinner, self._starfield_filler(4))
+        else:
+            progress_content = Group(self.progress, self._starfield_filler(4))
+
+        return Panel(
+            progress_content,
+            title=Text("Progress", style=COL_MENU),
+            border_style=COL_MENU,
+            title_align="left",
+        )
+
+    def _anim_loop(self):
+        while not self._stop_event.is_set():
+            with self._lock:
+                self.layout["header"].update(self._header_panel())
+                self.layout["progress"].update(self._render_progress_panel())
+                self.layout["logs"].update(self._render_log_panel())
+            time.sleep(1 / 15)
 
     def add_log(self, msg: str, level: str = "info"):
         msg = strip_ansi(msg).replace("\n", " ").strip()
@@ -601,13 +644,7 @@ class FixedProgressLogger:
         self.progress.update(self.task, completed=percent, description=description)
 
         with self._lock:
-            try:
-                progress_content = Group(self.progress, self._starfield_filler(4))
-            except Exception:
-                progress_content = self.progress
-            self.layout["progress"].update(
-                Panel(progress_content, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
-            )
+            self.layout["progress"].update(self._render_progress_panel())
 
     def mark_complete(self, description: str = "Download complete!"):
         if self.task is None:
@@ -615,20 +652,17 @@ class FixedProgressLogger:
         else:
             self.progress.update(self.task, completed=100, description=description)
         with self._lock:
-            try:
-                progress_content = Group(self.progress, self._starfield_filler(4))
-            except Exception:
-                progress_content = self.progress
-            self.layout["progress"].update(
-                Panel(progress_content, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
-            )
+            self.layout["progress"].update(self._render_progress_panel())
 
     def start(self):
         if not self.started:
             STARFIELD.start()
+            self._stop_event.clear()
             with self._lock:
                 self.layout["header"].update(self._header_panel())
             self.live.start()
+            self._anim_thread = threading.Thread(target=self._anim_loop, daemon=True)
+            self._anim_thread.start()
             self.started = True
             self._anim_running = True
             self._anim_thread = threading.Thread(target=self._anim_loop, daemon=True)
@@ -637,8 +671,12 @@ class FixedProgressLogger:
     def stop(self):
         STARFIELD.unfreeze_size()
         if self.started:
+            self._stop_event.set()
+            if self._anim_thread and self._anim_thread.is_alive():
+                self._anim_thread.join(timeout=1.0)
             self.live.stop()
             self.started = False
+            self._anim_thread = None
 
     def wait_for_continue(self, message: str = "Download success", seconds: int = 30):
         self.stop()
