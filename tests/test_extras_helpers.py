@@ -47,11 +47,11 @@ class TestExtrasHelpers(unittest.TestCase):
         entry = {"_filename": "/tmp/demo.webm"}
         self.assertEqual(extras.extract_entry_final_path(entry), Path("/tmp/demo.mp3"))
 
-    def test_starfield_uses_star_objects(self):
+    def test_starfield_uses_projection_state(self):
         field = extras.StarfieldBackground(width=40, height=12, star_count=5)
         self.assertEqual(field.width, 40)
         self.assertEqual(field.height, 12)
-        self.assertTrue(all(hasattr(star, "z") and hasattr(star, "pz") for star in field._stars))
+        self.assertTrue(all({"x", "y", "z", "pz", "speed"}.issubset(star.keys()) for star in field._stars))
 
 
 if __name__ == "__main__":

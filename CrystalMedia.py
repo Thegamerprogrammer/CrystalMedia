@@ -255,16 +255,17 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
         row = start_row + idx
         if row >= len(canvas):
             break
-        left = max(0, (width - len(line)) // 2)
-        _blank_row(row, left - 2, left + len(line) + 2)
+        left = 2
+        _blank_row(row, left - 1, left + len(line) + 1)
         for col, ch in enumerate(line):
             c = left + col
             if c < width and ch != " ":
                 canvas[row][c] = ch
 
+
     info_row = min(len(canvas) - 2, start_row + len(FIGLET_ART_LINES))
-    for text in ("v4", "-" * min(width, 60)):
-        left = max(0, (width - len(text)) // 2)
+    for text in ("v4", "-" * min(width - 4, 60)):
+        left = 2
         if 0 <= info_row < len(canvas):
             _blank_row(info_row, left - 2, left + len(text) + 2)
             for col, ch in enumerate(text):
@@ -272,6 +273,7 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
                 if c < width:
                     canvas[info_row][c] = ch
         info_row += 1
+
 
     if body_lines:
         body_start = min(len(canvas) - 1, info_row)
@@ -364,14 +366,13 @@ def display_clean_splash():
 
 def build_main_menu_frame(categories, selected_index) -> Text:
     """Build animated starfield + menu as a single frame renderable."""
-    divider = "-" * 60
     menu_lines = [
         "Main Category Selection",
         *[("→ " if i == selected_index else "  ") + cat for i, cat in enumerate(categories)],
         "",
         "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
     ]
-    return _compose_splash_frame([divider, *menu_lines])
+    return _compose_splash_frame(menu_lines)
 
 def clear_screen():
     """Cross-platform screen clear for animated frames."""
@@ -557,35 +558,62 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
         options["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": bitrate}]
     return options
 
+def select_option_menu(title: str, options: list[str], default_index: int = 0) -> int:
+    """Animated arrow-key selection menu that keeps starfield running."""
+    selected = max(0, min(default_index, len(options) - 1))
+    with Live(console=console, refresh_per_second=60, screen=True) as live:
+        while True:
+            lines = [
+                title,
+                *[("→ " if i == selected else "  ") + f"{i + 1}. {opt}" for i, opt in enumerate(options)],
+                "",
+                "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
+            ]
+            live.update(_compose_splash_frame(lines), refresh=True)
+            key = read_key(timeout=1 / 60)
+            if key == "UP":
+                selected = (selected - 1) % len(options)
+            elif key == "DOWN":
+                selected = (selected + 1) % len(options)
+            elif key == "ENTER":
+                return selected
+
+
 def select_mp3_bitrate() -> str:
-    console.print(Text("MP3 Bitrate Selection", style=COL_TITLE))
-    console.print(Text(" 1. Low (96 kbps)", style=COL_MENU))
-    console.print(Text(" 2. Medium (128 kbps)", style=COL_MENU))
-    console.print(Text(" 3. Standard (192 kbps) [default]", style=COL_MENU))
-    console.print(Text(" 4. High (256 kbps)", style=COL_MENU))
-    console.print(Text(" 5. Insane (320 kbps)", style=COL_MENU))
-    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "3"
-    return {"1": "96", "2": "128", "3": "192", "4": "256", "5": "320"}.get(choice, "192")
+    options = [
+        "Low (96 kbps)",
+        "Medium (128 kbps)",
+        "Standard (192 kbps) [default]",
+        "High (256 kbps)",
+        "Insane (320 kbps)",
+    ]
+    idx = select_option_menu("MP3 Bitrate Selection", options, default_index=2)
+    return ["96", "128", "192", "256", "320"][idx]
 
 def select_mp4_quality() -> str:
-    console.print(Text("MP4 Quality Selection", style=COL_TITLE))
-    console.print(Text(" 1. Low (~360p)", style=COL_MENU))
-    console.print(Text(" 2. Medium (~480p–720p)", style=COL_MENU))
-    console.print(Text(" 3. High (~720p–1080p)", style=COL_MENU))
-    console.print(Text(" 4. Best (highest available) [default]", style=COL_MENU))
-    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "4"
-    if choice == "1": return "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-    if choice == "2": return "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-    if choice == "3": return "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+    options = [
+        "Low (~360p)",
+        "Medium (~480p–720p)",
+        "High (~720p–1080p)",
+        "Best (highest available) [default]",
+    ]
+    idx = select_option_menu("MP4 Quality Selection", options, default_index=3)
+    if idx == 0:
+        return "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+    if idx == 1:
+        return "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+    if idx == 2:
+        return "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
     return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
 
 def select_embed_extras() -> bool:
-    console.print(Text("Embed extras (lyrics + art + subtitle fallback + metadata)", style=COL_TITLE))
-    console.print(Text(" 1. Yes (recommended for MP3)", style=COL_MENU))
-    console.print(Text(" 2. No", style=COL_MENU))
-    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "1"
-    return choice == "1"
+    idx = select_option_menu(
+        "Embed extras (lyrics + art + subtitle fallback + metadata)",
+        ["Yes (recommended for MP3)", "No"],
+        default_index=0,
+    )
+    return idx == 0
 
 
 
@@ -695,12 +723,12 @@ def extract_final_path_from_info(final_info):
 
 
 def select_js_runtime_preference() -> str:
-    console.print(Text("JavaScript Runtime Preference", style=COL_TITLE))
-    console.print(Text(" 1. Auto fallback (recommended)", style=COL_MENU))
-    console.print(Text(" 2. Prefer Deno first", style=COL_MENU))
-    console.print(Text(" 3. Prefer Node first", style=COL_MENU))
-    choice = console.input(Text("→ ", style=COL_ACC)).strip() or "1"
-    return {"1": "auto", "2": "deno", "3": "node"}.get(choice, "auto")
+    idx = select_option_menu(
+        "JavaScript Runtime Preference",
+        ["Auto fallback (recommended)", "Prefer Deno first", "Prefer Node first"],
+        default_index=0,
+    )
+    return ["auto", "deno", "node"][idx]
 
 
 def build_js_runtime_profiles(preference: str):
@@ -1372,6 +1400,28 @@ def read_key(timeout: float = 0.05):
         return None
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def select_mode_with_animation() -> bool:
+    """Animated mode selection (False=single, True=playlist)."""
+    options = ["Single Item", "Playlist"]
+    selected = 0
+    with Live(console=console, refresh_per_second=60, screen=True) as live:
+        while True:
+            lines = [
+                "Mode Selection",
+                *[("→ " if i == selected else "  ") + f"{i + 1}. {opt}" for i, opt in enumerate(options)],
+                "",
+                "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
+            ]
+            live.update(_compose_splash_frame(lines), refresh=True)
+            key = read_key(timeout=1 / 60)
+            if key == "UP":
+                selected = (selected - 1) % len(options)
+            elif key == "DOWN":
+                selected = (selected + 1) % len(options)
+            elif key == "ENTER":
+                return selected == 1
 
 
 # ──────────────────────────────────────────────

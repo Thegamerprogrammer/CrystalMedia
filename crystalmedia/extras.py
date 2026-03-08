@@ -17,40 +17,31 @@ from urllib.error import HTTPError, URLError
 from mutagen.id3 import APIC, ID3, SYLT, TALB, TDRC, TIT2, TPE1, USLT, ID3NoHeaderError
 
 
-class Star:
-    """Projected 3D star used by the terminal starfield renderer."""
-
-    def __init__(self, bounds: int):
-        self.bounds = bounds
-        self.x = random.randint(-self.bounds, self.bounds)
-        self.y = random.randint(-self.bounds, self.bounds)
-        self.z = random.randint(max(abs(self.x), abs(self.y), 1), self.bounds)
-        self.pz = self.z
-
-    def update(self, speed: int):
-        self.pz = self.z
-        self.z -= speed
-        if self.z < max(abs(self.x), abs(self.y), 1):
-            self.z = self.bounds
-            self.pz = self.z
-            self.x = random.randint(-self.bounds, self.bounds)
-            self.y = random.randint(-self.bounds, self.bounds)
-
-
 class StarfieldBackground:
-    """Perspective ASCII starfield rendered behind CrystalMedia UI."""
+    """Projection-style ASCII starfield for full-terminal background rendering."""
 
-    def __init__(self, width: Optional[int] = None, height: Optional[int] = None, star_count: int = 140):
+    def __init__(self, width: Optional[int] = None, height: Optional[int] = None, star_count: int = 220):
         term = shutil.get_terminal_size(fallback=(120, 36))
         self.width = max(30, width or term.columns)
         self.height = max(12, height or term.lines)
         self.star_count = star_count
-        self._speed = 1
         self._lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
-        self._bounds = max(12, min(self.width, self.height) // 2)
-        self._stars = [Star(self._bounds) for _ in range(star_count)]
+        self._depth = max(self.width, self.height)
+        self._bounds_x = max(10, self.width // 2)
+        self._bounds_y = max(6, self.height // 2)
+        self._stars = [self._new_star() for _ in range(self.star_count)]
+
+    def _new_star(self):
+        z = random.randint(1, self._depth)
+        return {
+            "x": random.randint(-self._bounds_x, self._bounds_x),
+            "y": random.randint(-self._bounds_y, self._bounds_y),
+            "z": z,
+            "pz": z,
+            "speed": random.choice([1, 1, 1, 2]),
+        }
 
     def _refresh_terminal_size(self):
         term = shutil.get_terminal_size(fallback=(self.width, self.height))
@@ -60,8 +51,10 @@ class StarfieldBackground:
             return
         self.width = new_width
         self.height = new_height
-        self._bounds = max(12, min(self.width, self.height) // 2)
-        self._stars = [Star(self._bounds) for _ in range(self.star_count)]
+        self._depth = max(self.width, self.height)
+        self._bounds_x = max(10, self.width // 2)
+        self._bounds_y = max(6, self.height // 2)
+        self._stars = [self._new_star() for _ in range(self.star_count)]
 
     def start(self):
         if self._running:
@@ -73,30 +66,38 @@ class StarfieldBackground:
     def stop(self):
         self._running = False
 
+    def _project(self, x: int, y: int, z: int):
+        z = max(1, z)
+        sx = int((x / z) * self._bounds_x + self._bounds_x)
+        sy = int((y / z) * self._bounds_y + self._bounds_y)
+        return sx, sy
+
     def _run(self):
         while self._running:
             with self._lock:
                 self._refresh_terminal_size()
                 for star in self._stars:
-                    star.update(self._speed)
+                    star["pz"] = star["z"]
+                    star["z"] -= star["speed"]
+                    if star["z"] <= 1:
+                        star["x"] = random.randint(-self._bounds_x, self._bounds_x)
+                        star["y"] = random.randint(-self._bounds_y, self._bounds_y)
+                        star["z"] = self._depth
+                        star["pz"] = self._depth
+                        star["speed"] = random.choice([1, 1, 1, 2])
             time.sleep(1 / 60)
-
-    def _project(self, x: int, y: int, z: int):
-        px = int((x / z) * self._bounds + (self.width // 2))
-        py = int((y / z) * self._bounds + (self.height // 2))
-        return px, py
 
     def render(self) -> str:
         with self._lock:
             self._refresh_terminal_size()
             canvas = [[" " for _ in range(self.width)] for _ in range(self.height)]
             for star in self._stars:
-                x, y = self._project(star.x, star.y, max(star.z, 1))
-                px, py = self._project(star.x, star.y, max(star.pz, 1))
+                x, y = self._project(star["x"], star["y"], star["z"])
+                px, py = self._project(star["x"], star["y"], star["pz"])
                 if 0 <= px < self.width and 0 <= py < self.height:
                     canvas[py][px] = "."
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    token = "+" if star.z < self._bounds // 3 else "*" if star.z < self._bounds // 2 else "."
+                    token = "+" if star["z"] < self._depth // 3 else "*" if star["z"] < self._depth // 2 else "."
                     canvas[y][x] = token
         return "\n".join("".join(row) for row in canvas)
 
