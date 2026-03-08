@@ -541,12 +541,6 @@ class FixedProgressLogger:
 
 
 
-    def _anim_loop(self):
-        while self._anim_running:
-            with self._lock:
-                self.layout["header"].update(self._header_panel())
-            time.sleep(1 / 30)
-
     def add_log(self, msg: str, level: str = "info"):
         msg = strip_ansi(msg).replace("\n", " ").strip()
 

@@ -28,7 +28,7 @@ class StarfieldBackground:
         self._lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
-        self._size_frozen = False
+        self._size_freeze_count = 0
         self._depth = max(self.width, self.height)
         self._bounds_x = max(10, self.width // 2)
         self._bounds_y = max(6, self.height // 2)
@@ -60,14 +60,18 @@ class StarfieldBackground:
 
     def freeze_size(self):
         with self._lock:
-            self._size_frozen = True
+            self._size_freeze_count += 1
 
     def unfreeze_size(self):
         with self._lock:
-            self._size_frozen = False
+            self._size_freeze_count = max(0, self._size_freeze_count - 1)
+
+    def force_unfreeze_size(self):
+        with self._lock:
+            self._size_freeze_count = 0
 
     def _refresh_terminal_size(self):
-        if self._size_frozen:
+        if self._size_freeze_count > 0:
             return
         term = shutil.get_terminal_size(fallback=(self.width, self.height))
         new_width = max(30, term.columns)
