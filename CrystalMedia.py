@@ -608,8 +608,12 @@ class FixedProgressLogger:
                 self.layout["header"].update(self._header_panel())
             self.live.start()
             self.started = True
+            self._anim_running = True
+            self._anim_thread = threading.Thread(target=self._anim_loop, daemon=True)
+            self._anim_thread.start()
 
     def stop(self):
+        STARFIELD.unfreeze_size()
         if self.started:
             self.live.stop()
             self.started = False
@@ -1663,16 +1667,20 @@ def main_loop():
 
     while True:
         try:
-            with Live(console=console, refresh_per_second=60, screen=True) as live:
-                while True:
-                    live.update(build_main_menu_frame(categories, selected_index), refresh=True)
-                    key = read_key(timeout=1 / 60)
-                    if key == "UP":
-                        selected_index = (selected_index - 1) % len(categories)
-                    elif key == "DOWN":
-                        selected_index = (selected_index + 1) % len(categories)
-                    elif key == "ENTER":
-                        break
+            STARFIELD.freeze_size()
+            try:
+                with Live(console=console, refresh_per_second=60, screen=True) as live:
+                    while True:
+                        live.update(build_main_menu_frame(categories, selected_index), refresh=True)
+                        key = read_key(timeout=1 / 60)
+                        if key == "UP":
+                            selected_index = (selected_index - 1) % len(categories)
+                        elif key == "DOWN":
+                            selected_index = (selected_index + 1) % len(categories)
+                        elif key == "ENTER":
+                            break
+            finally:
+                STARFIELD.unfreeze_size()
 
             if selected_index == 3:
                 STARFIELD.stop()
