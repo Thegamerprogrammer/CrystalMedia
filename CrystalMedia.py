@@ -515,7 +515,9 @@ class FixedProgressLogger:
         )
         self.task = None
         self.live = Live(self.layout, console=self.console, refresh_per_second=30, screen=True)
+        self.layout["header"].update(self._header_panel())
         self.layout["progress"].update(self._waiting_panel())
+        self.layout["logs"].update(self._waiting_logs_panel())
         self.started = False
         self._lock = threading.Lock()
 
@@ -539,7 +541,9 @@ class FixedProgressLogger:
         content = Group(waiting_spinner, self._starfield_filler(4))
         return Panel(content, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
 
-
+    def _waiting_logs_panel(self):
+        content = Group(Text("Waiting for output...", style="dim"), self._starfield_filler(8))
+        return Panel(content, title=Text("Download Log", style=COL_MENU), border_style=COL_MENU, title_align="left")
 
     def add_log(self, msg: str, level: str = "info"):
         msg = strip_ansi(msg).replace("\n", " ").strip()
