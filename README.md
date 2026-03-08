@@ -178,7 +178,36 @@ CrystalMedia/
 
 - Python **3.8+**
 - Internet connection
-- FFmpeg (app can help bootstrap if missing)
+- FFmpeg (install via your OS package manager, or use Docker below)
+
+---
+
+
+## 🐳 Docker (no host Python/FFmpeg install required)
+
+If you prefer not to install Python/FFmpeg directly on your machine, run CrystalMedia in Docker:
+
+```bash
+docker build -t crystalmedia .
+```
+
+Linux/macOS:
+```bash
+docker run --rm -it \
+  -v "$(pwd)/CrystalMedia:/app/CrystalMedia" \
+  -v "$(pwd)/csv:/app/csv" \
+  crystalmedia
+```
+
+Windows PowerShell:
+```powershell
+docker run --rm -it `
+  -v "${PWD}/CrystalMedia:/app/CrystalMedia" `
+  -v "${PWD}/csv:/app/csv" `
+  crystalmedia
+```
+
+This keeps your host clean while still running the full TUI flow.
 
 ---
 
@@ -194,12 +223,25 @@ CrystalMedia is released under the **MIT License** (see [`LICENSE`](./LICENSE)).
 
 Use responsibly and only with content you are authorized to download.
 
+- No Affiliation
+CrystalMedia is an independent, unofficial, community-developed project with no affiliation, endorsement, or partnership with YouTube, Google LLC, Spotify AB, or any related entities.
+Dependency Notices
+- This project uses third-party libraries including yt-dlp and relies on user-provided data/credentials. The authors do not control, modify, or distribute these dependencies in any infringing manner.
+ Takedown Compliance
+- If you are a rights holder and believe content related to this project infringes your rights, contact [your email or GitHub issues] with a proper DMCA/copyright notice. We will comply with valid legal requests, including removal of repo access if required.
+- Indemnification Clause (if you wanna go full corporate-scary)
+- By using CrystalMedia, you agree to indemnify and hold harmless the authors, contributors, and any associated parties from any claims, damages, losses, liabilities, costs, or expenses (including attorneys' fees) arising from your use or misuse of the software.
+
+## CrystalMedia does not circumvent digital rights management (DRM).
+## It relies on publicly available interfaces and third-party libraries.
+
 ---
 
 ## 🧯 Troubleshooting
 
 - If terminal rendering looks off after a resize, return to the main menu and start the download again.
 - Check `CrystalMedia/logs/crash.txt` for error traces and `CrystalMedia/logs/deps.txt` for dependency snapshots after startup.
+- On unrecoverable errors, CrystalMedia shows a fatal error panel, writes details to `CrystalMedia/logs/crash.txt`, and exits cleanly.
 
 ---
 
