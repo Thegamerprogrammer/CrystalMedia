@@ -604,7 +604,6 @@ class FixedProgressLogger:
     def start(self):
         if not self.started:
             STARFIELD.start()
-            STARFIELD.freeze_size()
             with self._lock:
                 self.layout["header"].update(self._header_panel())
             self.live.start()
