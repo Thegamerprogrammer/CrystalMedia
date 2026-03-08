@@ -59,16 +59,16 @@ class StarfieldBackground:
         star["speed"] = random.choice([1, 1, 1, 2])
 
     def freeze_size(self):
-        with self._lock:
-            self._size_freeze_count += 1
+        """Deprecated compatibility no-op; starfield now always tracks terminal size."""
+        return
 
     def unfreeze_size(self):
-        with self._lock:
-            self._size_freeze_count = max(0, self._size_freeze_count - 1)
+        """Deprecated compatibility no-op; starfield now always tracks terminal size."""
+        return
 
     def force_unfreeze_size(self):
-        with self._lock:
-            self._size_freeze_count = 0
+        """Deprecated compatibility no-op; starfield now always tracks terminal size."""
+        return
 
     def _refresh_terminal_size(self):
         if self._size_freeze_count > 0:
