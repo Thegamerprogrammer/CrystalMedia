@@ -587,6 +587,7 @@ def select_option_menu(title: str, options: list[str], default_index: int = 0) -
 
 
 def select_mp3_bitrate() -> str:
+    clear_screen()
     console.print(_compose_plain_splash([
         "MP3 Bitrate Selection",
         " 1. Low (96 kbps)",
@@ -599,6 +600,7 @@ def select_mp3_bitrate() -> str:
     return {"1": "96", "2": "128", "3": "192", "4": "256", "5": "320"}.get(choice, "192")
 
 def select_mp4_quality() -> str:
+    clear_screen()
     console.print(_compose_plain_splash([
         "MP4 Quality Selection",
         " 1. Low (~360p)",
@@ -617,6 +619,7 @@ def select_mp4_quality() -> str:
 
 
 def select_embed_extras() -> bool:
+    clear_screen()
     console.print(_compose_plain_splash([
         "Embed extras (lyrics + art + subtitle fallback + metadata)",
         " 1. Yes (recommended for MP3)",
@@ -733,6 +736,7 @@ def extract_final_path_from_info(final_info):
 
 
 def select_js_runtime_preference() -> str:
+    clear_screen()
     console.print(_compose_plain_splash([
         "JavaScript Runtime Preference",
         " 1. Auto fallback (recommended)",
@@ -1416,6 +1420,7 @@ def read_key(timeout: float = 0.05):
 
 def select_mode_with_animation() -> bool:
     """Vanilla mode selection shown without starfield animation."""
+    clear_screen()
     console.print(_compose_plain_splash([
         "Mode Selection",
         " 1. Single Item",
@@ -1457,6 +1462,7 @@ def main_loop():
 
             category_choice = str(selected_index + 1)
             STARFIELD.stop()
+            clear_screen()
 
             is_playlist = select_mode_with_animation()
 
@@ -1467,6 +1473,7 @@ def main_loop():
             embed_extras = select_embed_extras()
 
             display_clean_splash()
+            clear_screen()
 
             if category_choice == "1":
                 download_youtube(url_input, "video", is_playlist, embed_extras=embed_extras)
