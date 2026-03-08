@@ -71,6 +71,8 @@ class StarfieldBackground:
         return
 
     def _refresh_terminal_size(self):
+        if self._size_freeze_count > 0:
+            return
         term = shutil.get_terminal_size(fallback=(self.width, self.height))
         new_width = max(30, term.columns)
         new_height = max(12, term.lines)
