@@ -263,7 +263,7 @@ log_runtime("Dependency health check completed.")
 # ──────────────────────────────────────────────
 # NOW import external libraries
 # ──────────────────────────────────────────────
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.text import Text
 from rich.live import Live
@@ -358,42 +358,14 @@ def _compose_splash_frame(body_lines: list[str] | None = None) -> Text:
 
 
 
-def _compose_compact_splash_frame(body_lines: list[str] | None = None, height: int = 10) -> Text:
-    """Compact starfield frame for panel headers without oversized figlet artifacts."""
-    star_lines = STARFIELD.render().splitlines()
-    width = max((len(line) for line in star_lines), default=80)
-    header_rows = max(height, 8 + (len(body_lines or [])))
-    limited = [line.ljust(width) for line in star_lines[:header_rows]]
-    if len(limited) < header_rows:
-        limited.extend([" " * width for _ in range(header_rows - len(limited))])
-
-    canvas = [list(line) for line in limited]
-
-    def _write_line(row: int, value: str):
-        if not (0 <= row < len(canvas)):
-            return
-        text_line = value[: max(1, width - 4)]
-        left = 2
-        for c in range(left - 1, min(width, left + len(text_line) + 1)):
-            canvas[row][c] = " "
-        for idx, ch in enumerate(text_line):
-            col = left + idx
-            if col < width:
-                canvas[row][col] = ch
-
-    _write_line(1, "CrystalMedia")
-    _write_line(2, "v4")
-    _write_line(3, "-" * min(width - 4, 60))
-
+def _compose_tooltip_figlet_frame(body_lines: list[str] | None = None) -> Text:
+    """Stable pyfiglet tooltip header (no starfield) to avoid resize/flicker glitches."""
+    width = max(60, console.size.width - 8)
+    lines = [*FIGLET_ART_LINES, "v4", "-" * min(width - 4, 60)]
     if body_lines:
-        row = 4
-        for line in body_lines:
-            _write_line(row, line)
-            row += 1
-            if row >= len(canvas):
-                break
-
-    return Text('\n'.join(''.join(row) for row in canvas), style=COL_MENU)
+        lines.extend(body_lines)
+    clipped = [line[:width] for line in lines]
+    return Text("\n".join(clipped), style=COL_MENU)
 
 
 
@@ -546,20 +518,28 @@ class FixedProgressLogger:
         self.layout["progress"].update(self._waiting_panel())
         self.started = False
         self._lock = threading.Lock()
-        self._anim_running = False
-        self._anim_thread = None
 
     def _header_panel(self):
         return Panel(
-            _compose_compact_splash_frame(self.header_lines, height=11),
+            _compose_tooltip_figlet_frame(self.header_lines),
             border_style=COL_MENU,
             title=Text("CrystalMedia", style=COL_MENU),
             title_align="left",
         )
 
+    def _starfield_filler(self, line_count: int = 4) -> Text:
+        stars = STARFIELD.render().splitlines()
+        if not stars:
+            return Text("", style=COL_MENU)
+        clipped = stars[:max(1, line_count)]
+        return Text("\n".join(clipped), style=COL_MENU)
+
     def _waiting_panel(self):
         waiting_spinner = Spinner("dots", text=Text(" Waiting for download data...", style=COL_MENU), style=COL_MENU)
-        return Panel(waiting_spinner, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
+        content = Group(waiting_spinner, self._starfield_filler(4))
+        return Panel(content, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
+
+
 
     def _anim_loop(self):
         while self._anim_running:
@@ -591,8 +571,13 @@ class FixedProgressLogger:
             log_text.append_text(log_entry)
             log_text.append("\n")
 
+        if self.logs:
+            log_content = Group(log_text, self._starfield_filler(max(2, 12 - len(self.logs))))
+        else:
+            log_content = Group(Text("Waiting for output...", style="dim"), self._starfield_filler(8))
+
         log_panel = Panel(
-            log_text if self.logs else Text("Waiting for output...", style="dim"),
+            log_content,
             title=Text("Download Log", style=COL_MENU),
             border_style=COL_MENU,
             title_align="left",
@@ -606,8 +591,9 @@ class FixedProgressLogger:
         self.progress.update(self.task, completed=percent, description=description)
 
         with self._lock:
+            progress_content = Group(self.progress, self._starfield_filler(4))
             self.layout["progress"].update(
-                Panel(self.progress, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
+                Panel(progress_content, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
             )
 
     def mark_complete(self, description: str = "Download complete!"):
@@ -616,13 +602,15 @@ class FixedProgressLogger:
         else:
             self.progress.update(self.task, completed=100, description=description)
         with self._lock:
+            progress_content = Group(self.progress, self._starfield_filler(4))
             self.layout["progress"].update(
-                Panel(self.progress, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
+                Panel(progress_content, title=Text("Progress", style=COL_MENU), border_style=COL_MENU, title_align="left")
             )
 
     def start(self):
         if not self.started:
             STARFIELD.start()
+            STARFIELD.freeze_size()
             with self._lock:
                 self.layout["header"].update(self._header_panel())
             self.live.start()
@@ -632,9 +620,7 @@ class FixedProgressLogger:
             self._anim_thread.start()
 
     def stop(self):
-        self._anim_running = False
-        if self._anim_thread and self._anim_thread.is_alive():
-            self._anim_thread.join(timeout=0.2)
+        STARFIELD.unfreeze_size()
         if self.started:
             self.live.stop()
             self.started = False
@@ -707,25 +693,29 @@ def select_option_menu(title: str, options: list[str], default_index: int = 0, s
     """Animated arrow-key selection menu that keeps starfield running."""
     selected = max(0, min(default_index, len(options) - 1))
     STARFIELD.start()
+    STARFIELD.freeze_size()
     clear_screen()
-    with Live(console=console, refresh_per_second=60, screen=True) as live:
-        while True:
-            lines = [
-                title,
-                *( [subtitle] if subtitle else [] ),
-                *[("→ " if i == selected else "  ") + f"{i + 1}. {opt}" for i, opt in enumerate(options)],
-                "",
-                "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
-            ]
-            live.update(_compose_splash_frame(lines), refresh=True)
-            key = read_key(timeout=1 / 60)
-            if key == "UP":
-                selected = (selected - 1) % len(options)
-            elif key == "DOWN":
-                selected = (selected + 1) % len(options)
-            elif key == "ENTER":
-                clear_screen()
-                return selected
+    try:
+        with Live(console=console, refresh_per_second=60, screen=True) as live:
+            while True:
+                lines = [
+                    title,
+                    *( [subtitle] if subtitle else [] ),
+                    *[("→ " if i == selected else "  ") + f"{i + 1}. {opt}" for i, opt in enumerate(options)],
+                    "",
+                    "↑ ↓ to navigate • Enter to select • Ctrl+C to quit",
+                ]
+                live.update(_compose_splash_frame(lines), refresh=True)
+                key = read_key(timeout=1 / 60)
+                if key == "UP":
+                    selected = (selected - 1) % len(options)
+                elif key == "DOWN":
+                    selected = (selected + 1) % len(options)
+                elif key == "ENTER":
+                    clear_screen()
+                    return selected
+    finally:
+        STARFIELD.unfreeze_size()
 
 
 def select_mp3_bitrate() -> str:
@@ -1584,18 +1574,22 @@ def select_mode_with_animation() -> bool:
 def wait_for_enter_with_animation(message: str):
     """Keep starfield visible while waiting for Enter."""
     STARFIELD.start()
-    with Live(console=console, refresh_per_second=60, screen=True) as live:
-        while True:
-            lines = [
-                message,
-                "",
-                "Press Enter to continue...",
-            ]
-            live.update(_compose_splash_frame(lines), refresh=True)
-            key = read_key(timeout=1 / 60)
-            if key == "ENTER":
-                clear_screen()
-                return
+    STARFIELD.freeze_size()
+    try:
+        with Live(console=console, refresh_per_second=60, screen=True) as live:
+            while True:
+                lines = [
+                    message,
+                    "",
+                    "Press Enter to continue...",
+                ]
+                live.update(_compose_splash_frame(lines), refresh=True)
+                key = read_key(timeout=1 / 60)
+                if key == "ENTER":
+                    clear_screen()
+                    return
+    finally:
+        STARFIELD.unfreeze_size()
 
 
 def prompt_resource_url_with_animation() -> str:
@@ -1605,34 +1599,38 @@ def prompt_resource_url_with_animation() -> str:
 
     if platform.system() == "Windows":
         import msvcrt
-        with Live(console=console, refresh_per_second=60, screen=True) as live:
-            while True:
-                lines = [
-                    "",
-                    f"Resource URL → {''.join(buffer)}",
-                    "",
-                    "Type URL • Backspace to edit • Enter to continue • Ctrl+C to cancel",
-                ]
-                live.update(_compose_splash_frame(lines), refresh=True)
-                if not msvcrt.kbhit():
-                    time.sleep(1 / 60)
-                    continue
-                ch = msvcrt.getwch()
-                if ch in ("\r", "\n"):
-                    clear_screen()
-                    return ''.join(buffer).strip()
-                if ch == "\x03":
-                    raise KeyboardInterrupt
-                if ch in ("\b", "\x7f"):
-                    if buffer:
-                        buffer.pop()
-                    continue
-                if ch in ("\x00", "\xe0"):
-                    if msvcrt.kbhit():
-                        msvcrt.getwch()
-                    continue
-                if ch.isprintable():
-                    buffer.append(ch)
+        STARFIELD.freeze_size()
+        try:
+            with Live(console=console, refresh_per_second=60, screen=True) as live:
+                while True:
+                    lines = [
+                        "",
+                        f"Resource URL → {''.join(buffer)}",
+                        "",
+                        "Type URL • Backspace to edit • Enter to continue • Ctrl+C to cancel",
+                    ]
+                    live.update(_compose_splash_frame(lines), refresh=True)
+                    if not msvcrt.kbhit():
+                        time.sleep(1 / 60)
+                        continue
+                    ch = msvcrt.getwch()
+                    if ch in ("\r", "\n"):
+                        clear_screen()
+                        return ''.join(buffer).strip()
+                    if ch == "\x03":
+                        raise KeyboardInterrupt
+                    if ch in ("\b", "\x7f"):
+                        if buffer:
+                            buffer.pop()
+                        continue
+                    if ch in ("\x00", "\xe0"):
+                        if msvcrt.kbhit():
+                            msvcrt.getwch()
+                        continue
+                    if ch.isprintable():
+                        buffer.append(ch)
+        finally:
+            STARFIELD.unfreeze_size()
     else:
         import tty, termios, select
         if not sys.stdin.isatty():
@@ -1643,6 +1641,7 @@ def prompt_resource_url_with_animation() -> str:
         old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
+            STARFIELD.freeze_size()
             with Live(console=console, refresh_per_second=60, screen=True) as live:
                 while True:
                     lines = [
@@ -1670,7 +1669,10 @@ def prompt_resource_url_with_animation() -> str:
                     if ch.isprintable():
                         buffer.append(ch)
         finally:
+            STARFIELD.unfreeze_size()
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
 
 
 # ──────────────────────────────────────────────
@@ -1686,16 +1688,20 @@ def main_loop():
 
     while True:
         try:
-            with Live(console=console, refresh_per_second=60, screen=True) as live:
-                while True:
-                    live.update(build_main_menu_frame(categories, selected_index), refresh=True)
-                    key = read_key(timeout=1 / 60)
-                    if key == "UP":
-                        selected_index = (selected_index - 1) % len(categories)
-                    elif key == "DOWN":
-                        selected_index = (selected_index + 1) % len(categories)
-                    elif key == "ENTER":
-                        break
+            STARFIELD.freeze_size()
+            try:
+                with Live(console=console, refresh_per_second=60, screen=True) as live:
+                    while True:
+                        live.update(build_main_menu_frame(categories, selected_index), refresh=True)
+                        key = read_key(timeout=1 / 60)
+                        if key == "UP":
+                            selected_index = (selected_index - 1) % len(categories)
+                        elif key == "DOWN":
+                            selected_index = (selected_index + 1) % len(categories)
+                        elif key == "ENTER":
+                            break
+            finally:
+                STARFIELD.unfreeze_size()
 
             if selected_index == 3:
                 STARFIELD.stop()
