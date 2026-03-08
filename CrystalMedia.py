@@ -574,6 +574,7 @@ def get_ydl_options(is_playlist: bool, content_type: str) -> dict:
 def select_option_menu(title: str, options: list[str], default_index: int = 0) -> int:
     """Animated arrow-key selection menu that keeps starfield running."""
     selected = max(0, min(default_index, len(options) - 1))
+    STARFIELD.start()
     clear_screen()
     with Live(console=console, refresh_per_second=60, screen=True) as live:
         while True:
@@ -1426,6 +1427,7 @@ def select_mode_with_animation() -> bool:
 def prompt_resource_url_with_animation() -> str:
     """Capture URL while keeping the starfield splash visible and animated."""
     buffer: list[str] = []
+    STARFIELD.start()
 
     if platform.system() == "Windows":
         import msvcrt
@@ -1539,7 +1541,6 @@ def main_loop():
 
             embed_extras = select_embed_extras()
 
-            STARFIELD.stop()
             clear_screen()
 
             if category_choice == "1":
