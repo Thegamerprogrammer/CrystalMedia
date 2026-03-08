@@ -1538,6 +1538,8 @@ def main_loop():
             clear_screen()
 
             embed_extras = select_embed_extras()
+
+            STARFIELD.stop()
             clear_screen()
 
             if category_choice == "1":
