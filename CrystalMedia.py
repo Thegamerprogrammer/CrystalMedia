@@ -1,6 +1,6 @@
 
 """
-CrystalMedia Downloader – Stable Production Release v4
+CrystalMedia Downloader – Stable Production Release v4.0.2
 ==========================================================
 Cross-platform media downloader for YouTube & Spotify.
 YouTube: works like a beast
