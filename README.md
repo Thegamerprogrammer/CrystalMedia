@@ -232,7 +232,6 @@ CrystalMedia is an independent, unofficial, community-developed project with no 
 Dependency Notices
 - This project uses third-party libraries including yt-dlp and relies on user-provided data/credentials. The authors do not control, modify, or distribute these dependencies in any infringing manner.
  Takedown Compliance
-- If you are a rights holder and believe content related to this project infringes your rights, contact [your email or GitHub issues] with a proper DMCA/copyright notice. We will comply with valid legal requests, including removal of repo access if required.
 - Indemnification
 - By using CrystalMedia, you agree to indemnify, defend, and hold harmless
 the authors, contributors, maintainers, and distributors of this software
