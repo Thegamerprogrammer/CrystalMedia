@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen)](#-requirements)
 [![GitHub Clones](https://img.shields.io/badge/dynamic/json?color=success&label=Clone&query=count&url=https://gist.githubusercontent.com/Thegamerprogrammer/67e7385ac3007f506a2589f0a424afc2/raw/clone.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
+![Alt](https://repobeats.axiom.co/api/embed/2f5fb36c0b15af4c900de87f032b84800a375bc3.svg "Repobeats analytics image")
 
 
 
