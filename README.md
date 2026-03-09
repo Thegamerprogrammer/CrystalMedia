@@ -4,8 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen)](#-requirements)
-![GitHub Downloads](https://img.shields.io/github/downloads/thegamerprogrammer/CrystalM
-edia/total)
+![GitHub Downloads](https://img.shields.io/github/downloads/thegamerprogrammer/CrystalMedia/total)
 
 
 
