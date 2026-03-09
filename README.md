@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen)](#-requirements)
 [![GitHub Clones](https://img.shields.io/badge/dynamic/json?color=success&label=Clone&query=count&url=https://gist.githubusercontent.com/Thegamerprogrammer/67e7385ac3007f506a2589f0a424afc2/raw/clone.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
-[![PyPI Downloads](https://static.pepy.tech/personalized-badge/crystalmedia?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=PyPI%20Downloads)](https://pepy.tech/projects/crystalmedia)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/crystalmedia?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=BLUE&left_text=PyPI+Downloads)](https://pepy.tech/projects/crystalmedia)
 
 
 
