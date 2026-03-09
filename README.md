@@ -4,6 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen)](#-requirements)
+![GitHub Clones](https://gh-traffic-badge.vercel.app/api/repos/Thegamerprogrammer/CrystalMedia)
 
 
 
