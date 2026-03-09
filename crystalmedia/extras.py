@@ -1,4 +1,4 @@
-"""Extras helpers: starfield animation and MP3 metadata enrichment."""
+"""Extras helpers, starfield animation and MP3 metadata enrichment."""
 
 from __future__ import annotations
 
