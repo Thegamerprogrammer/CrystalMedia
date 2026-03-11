@@ -6,9 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen)](#-requirements)
 [![GitHub Clones](https://img.shields.io/badge/dynamic/json?color=success&label=Clone&query=count&url=https://gist.githubusercontent.com/Thegamerprogrammer/67e7385ac3007f506a2589f0a424afc2/raw/clone.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
 [![PyPI downloads](https://img.shields.io/pypi/dw/crystalmedia?label=downloads@pypi&color=344CC1&style=flat-square)](https://pypi.org/project/crystalmedia/)
-
-
-[CrystalMedia Analytics Dashboard](https://clickhouse-analytics.metabaseapp.com/public/dashboard/8d516106-3a9f-4674-aafc-aa39d6380ee2?project_name=crystalmedia#&theme=night)
+[![ClickPY PyPI Stats](https://img.shields.io/badge/ClickPY-PyPI%20Stats-blue?style=flat-square)](https://clickhouse-analytics.metabaseapp.com/public/dashboard/8d516106-3a9f-4674-aafc-aa39d6380ee2?project_name=crystalmedia#&theme=night)
 
 
 ![Alt](https://repobeats.axiom.co/api/embed/2f5fb36c0b15af4c900de87f032b84800a375bc3.svg "Repobeats analytics image")
